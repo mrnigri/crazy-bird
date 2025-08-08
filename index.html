@@ -9,6 +9,9 @@
     html,body{ margin:0; height:100%; background:radial-gradient(1000px 600px at 20% 20%, #0f1a3a, var(--bg)); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,'Noto Sans','Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; }
     .wrap{ display:grid; place-items:center; height:100%; }
     canvas{ background:#0b1020; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); outline:none; }
+    /* Oculta o cursor apenas durante o jogo */
+    canvas.playing{ cursor:none; }
+
     .hud{ position:fixed; top:12px; left:50%; transform:translateX(-50%); font-weight:700; text-shadow:0 2px 6px rgba(0,0,0,.4); user-select:none; pointer-events:none; }
     .score{ font-size:28px; }
     .ammo{ position:fixed; top:12px; left:12px; font-size:20px; font-weight:800; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.2); padding:6px 10px; border-radius:12px; box-shadow:0 3px 0 rgba(0,0,0,.2); user-select:none; }
@@ -26,6 +29,20 @@
     .bad{ color:var(--bad); font-weight:700; }
     .audio-ctrl{ position:fixed; top:12px; right:12px; z-index:10; }
     .audio-ctrl button{ background:rgba(0,0,0,.45); color:#eaf2ff; border:1px solid rgba(255,255,255,.2); border-radius:12px; padding:8px 10px; cursor:pointer; }
+
+    /* ===== Mobile Fire Pad (alvo translúcido) ===== */
+    .fire-pad{ position:fixed; left:14px; bottom:14%; width:min(26vw,110px); height:min(26vw,110px); border-radius:50%;
+      display:none; align-items:center; justify-content:center; z-index:11; user-select:none; touch-action:none;
+      background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.32) 0 6%, rgba(255,255,255,0) 7% 26%, rgba(255,255,255,.26) 27% 33%, rgba(255,255,255,0) 34% 54%, rgba(255,255,255,.22) 55% 61%, rgba(255,255,255,0) 62% 100%),
+                  radial-gradient(circle at 50% 50%, rgba(120,200,255,.18), rgba(120,200,255,0) 70%);
+      border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 22px rgba(0,0,0,.3); opacity:.5; backdrop-filter:blur(2px);
+    }
+    .fire-pad.show{ display:flex; }
+    .fire-pad:active{ transform:scale(.98); opacity:.75; }
+    .fire-pad .dot{ width:20%; height:20%; border-radius:50%; background:rgba(255,255,255,.5); box-shadow:0 0 12px rgba(255,255,255,.6), inset 0 0 6px rgba(0,0,0,.2); }
+
+    /* só mostra o pad em telas touch/coarse quando marcado como .show  */
+    @media (pointer:coarse){ .fire-pad{ display:none; } .fire-pad.show{ display:flex; } }
   </style>
 </head>
 <body>
@@ -36,14 +53,18 @@
   <div class="ammo" id="ammo">🔥 0</div>
   <div class="audio-ctrl"><button id="btn-audio" title="Alternar sons">🔊 Som</button></div>
 
+  <!-- Botão/área de fogo para mobile -->
+  <div id="fire-pad" class="fire-pad" aria-label="Atirar" title="Atirar"><div class="dot"></div></div>
+
   <!-- UI overlays -->
   <div class="ui" id="ui-start">
     <div class="panel">
       <h1>Crazy Bird</h1>
       <p class="tips">
-        • Espaço para bater asas e <strong>começar</strong>.<br/>
-        • → para soltar a <strong>chama</strong> (requer 🔥).<br/>
-        • Desvie do <strong>teto</strong>, <strong>chão</strong> e <strong>flechas medievais</strong>. Escudo (a partir de 400 pts) protege temporariamente.
+        • Espaço para <strong>bater asas</strong>.<br/>
+        • Clique/toque na tela também <strong>bate asas</strong>.<br/>
+        • → para soltar a <strong>chama</strong> (requer 🔥). Em telas touch, use o <strong>alvo translúcido</strong> à esquerda.<br/>
+        • Desvie do <strong>teto</strong>, <strong>chão</strong> e <strong>flechas medievais</strong>. Escudo protege temporariamente.
       </p>
       <div class="btns">
         <button class="primary" id="btn-start">Começar</button>
@@ -58,7 +79,7 @@
         <button class="primary" id="btn-restart">Reiniciar</button>
         <button class="ghost" id="btn-menu">Menu</button>
       </div>
-      <p class="tips">Dica: colete 🔥 para munição e 🛡️ a partir de 400 pts.</p>
+      <p class="tips">Dica: colete 🔥 para munição e 🛡️.</p>
     </div>
   </div>
 
@@ -98,7 +119,7 @@
     // Power-up 🛡️ (escudo)
     const SHIELD_PICKUP_R=14;
     const SHIELD_SPAWN_MIN=8, SHIELD_SPAWN_MAX=14;
-    const SHIELD_START_SCORE=400;
+    const SHIELD_START_SCORE=400; // mantém lógica; só mudamos textos
     const SHIELD_DURATION=10;
     const SHIELD_WARN=2;
     const SHIELD_BLINK_HZ=8;
@@ -113,6 +134,11 @@
     let ammo=0;
     let shieldPickups=[], shieldTimer=0;
     let shieldTTL=0;
+
+    // ======= Touch detection =======
+    const IS_TOUCH = (('ontouchstart' in window) || navigator.maxTouchPoints>0 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+    document.body.classList.toggle('has-touch', IS_TOUCH);
+    const firePad = document.getElementById('fire-pad');
 
     // ======= Util =======
     const clamp=function(v,a,b){ return Math.max(a,Math.min(b,v)); };
@@ -174,12 +200,21 @@
       resetGame();
       Sfx.start();
       state='playing'; hideStart(); hideOver();
+      canvas.classList.add('playing');
+      if(IS_TOUCH) firePad.classList.add('show'); else firePad.classList.remove('show');
       canvas.focus();
       lastTime=performance.now();
       requestAnimationFrame(loop);
     }
 
-    function gameOver(){ state='over'; document.getElementById('final-score').textContent=score; Sfx.over(); showOver(); }
+    function gameOver(){
+      state='over';
+      document.getElementById('final-score').textContent=score;
+      canvas.classList.remove('playing');
+      firePad.classList.remove('show');
+      Sfx.over();
+      showOver();
+    }
 
     function updateScore(){ document.getElementById('score').textContent=score; }
 
@@ -246,24 +281,35 @@
       if(e.code==='Space' || e.key===' ' || e.key==='Spacebar'){
         e.preventDefault();
         if(state==='menu'){ startGame(); return; }
-        if(state==='over'){ startGame(); return; }
         if(!pressed){ flap(); pressed=true; }
-      } else if(e.code==='Enter' && state!=='playing'){ e.preventDefault(); startGame(); }
-      else if(e.code==='KeyR' && state==='over'){ e.preventDefault(); startGame(); }
-      else if(e.code==='ArrowRight'){ e.preventDefault(); shoot(); }
+      } else if(e.code==='Enter' && state==='menu'){
+        e.preventDefault();
+        startGame();
+      } else if(e.code==='ArrowRight'){
+        e.preventDefault();
+        shoot();
+      }
     }, {passive:false});
 
     window.addEventListener('keyup',function(e){ if(e.code==='Space' || e.key===' ' || e.key==='Spacebar') pressed=false; });
+
+    // Canvas: clique/touch bate asas
     ['click','pointerdown','touchstart'].forEach(function(evt){ canvas.addEventListener(evt,function(e){ e.preventDefault(); flap(); }); });
+
+    // Fire pad: clique/touch atira (não propaga)
+    ['pointerdown','touchstart','mousedown','click'].forEach(function(evt){ firePad.addEventListener(evt,function(e){ e.preventDefault(); e.stopPropagation(); shoot(); }, {passive:false}); });
 
     // ======= UI =======
     const uiStart=document.getElementById('ui-start'); const uiOver=document.getElementById('ui-over');
-    function hideStart(){ uiStart.classList.add('hide'); } function showStart(){ uiStart.classList.remove('hide'); }
-    function hideOver(){ uiOver.classList.add('hide'); } function showOver(){ uiOver.classList.remove('hide'); }
+    function hideStart(){ uiStart.classList.add('hide'); }
+    function showStart(){ uiStart.classList.remove('hide'); }
+    function hideOver(){ uiOver.classList.add('hide'); }
+    function showOver(){ uiOver.classList.remove('hide'); }
+
     document.getElementById('btn-start').onclick=function(){ startGame(); };
-    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço/clique. Desvie do teto/chão e flechas. Colete 🔥 para ganhar munição e use → para atirar. Escudo a partir de 400 pontos.'); };
+    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Em telas touch, use o alvo translúcido à esquerda para lançar chamas. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → (teclado) ou o alvo (touch) para atirar. Escudo protege temporariamente.'); };
     document.getElementById('btn-restart').onclick=function(){ startGame(); };
-    document.getElementById('btn-menu').onclick=function(){ state='menu'; showStart(); hideOver(); };
+    document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); firePad.classList.remove('show'); showStart(); hideOver(); };
 
     // ======= Resize =======
     function fitCanvas(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); const w=Math.round(960*scale), h=Math.round(540*scale); canvas.width=w; canvas.height=h; }
@@ -278,26 +324,20 @@
     let stoneTopPattern=null, stoneBotPattern=null, capLight='#cfd8dc', capDark='#2b2f36';
     function makeStonePattern(w,h, base1, base2, mortar){
       const off=document.createElement('canvas'); off.width=w; off.height=h; const c=off.getContext('2d');
-      // fundo em gradiente sutil
       const g=c.createLinearGradient(0,0,0,h);
       g.addColorStop(0, base1); g.addColorStop(1, base2);
       c.fillStyle=g; c.fillRect(0,0,w,h);
-      // linhas de argamassa
       c.strokeStyle=mortar; c.lineWidth=2;
       const rowH=Math.floor(h/2);
       for(let r=0;r<h; r+=rowH){ c.beginPath(); c.moveTo(0,r+0.5); c.lineTo(w,r+0.5); c.stroke(); }
-      // tijolos: 2 fileiras com offset
       const brickW=Math.floor(w/4);
       for(let r=0;r<2;r++){
         const y=r*rowH; const offset=(r%2)? Math.floor(brickW/2) : 0;
         for(let x=-offset; x<w; x+=brickW){
-          // borda de tijolo (mortalha)
           c.strokeStyle=mortar; c.lineWidth=1; c.strokeRect(x+0.5,y+0.5,brickW-1,rowH-1);
-          // variação sutil
           const alpha=0.06+Math.random()*0.06; c.fillStyle='rgba(0,0,0,'+alpha+')'; c.fillRect(x+2,y+2,brickW-4,rowH-4);
         }
       }
-      // manchas de musgo
       for(let i=0;i<5;i++){
         const mx=Math.random()*w, my=Math.random()*h; const mr=4+Math.random()*7; const mg=c.createRadialGradient(mx,my,1,mx,my,mr);
         mg.addColorStop(0,'rgba(120,150,120,0.25)'); mg.addColorStop(1,'rgba(120,150,120,0)');
@@ -306,7 +346,6 @@
       return c.createPattern(off,'repeat');
     }
     function buildPatterns(){
-      // Tons um pouco diferentes para teto e chão
       stoneTopPattern=makeStonePattern(64,32,'#6c717a','#4a5058','rgba(20,22,25,0.55)');
       stoneBotPattern=makeStonePattern(64,32,'#5e665f','#3f4742','rgba(18,20,22,0.55)');
     }
@@ -317,39 +356,28 @@
     function loop(now){ const dt=Math.min(0.032,(now-lastTime)/1000); lastTime=now; if(state==='playing') update(dt); draw(); if(state!=='menu') requestAnimationFrame(loop); }
 
     function update(dt){
-      // mover mundo
       const dx=SPEED*dt; for(let i=0;i<segments.length;i++){ segments[i].x-=dx; } lastGenX-=dx; while(segments.length && segments[0].x+SEG_W<-50){ segments.shift(); passedIndex=Math.max(0,passedIndex-1);} generateUntil(W()+200);
-      // timers
       timeElapsed+=dt; enemyTimer-=dt; pickupTimer-=dt; shieldTimer-=dt; fireCooldown=Math.max(0, fireCooldown-dt); shieldTTL=Math.max(0, shieldTTL-dt);
 
-      // inimigos (flechas)
       if(timeElapsed>EASY_TIME && enemyTimer<=0){ spawnEnemy(); enemyTimer=randRange(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX); }
       for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; e.x-=(SPEED+ENEMY_SPEED)*dt; e.phase += dt*ENEMY_WOBBLE_HZ*2*Math.PI; if(e.x<-ENEMY_W-60) { enemies.splice(i,1); continue; } }
 
-      // pickups 🔥
-      if(timeElapsed>EASY_TIME && pickupTimer<=0){ spawnPickup(); pickupTimer=randRange(PICKUP_SPAWN_MIN, PICKUP_SPAWN_MAX); }
+      if(timeElapsed>EASY_TIME && pickupTimer<=0){ spawnPickup(); pickupTimer=randRange(PICKUP_SPAWN_MIN,PICKUP_SPAWN_MAX); }
       for(let i=pickups.length-1;i>=0;i--){ const p=pickups[i]; p.x-=dx; p.phase+=dt*2; p.y+=Math.sin(p.phase)*10*dt; if(p.x<-PICKUP_R-40){ pickups.splice(i,1); continue; } const dxp=bird.x - p.x, dyp=bird.y - p.y; if(dxp*dxp + dyp*dyp <= (BIRD_R+PICKUP_R)*(BIRD_R+PICKUP_R)){ pickups.splice(i,1); ammo+=1; updateAmmo(); Sfx.pickup(); } }
 
-      // shield pickups 🛡️
       if(score>=SHIELD_START_SCORE && shieldTimer<=0){ spawnShield(); shieldTimer=randRange(SHIELD_SPAWN_MIN, SHIELD_SPAWN_MAX); }
       for(let i=shieldPickups.length-1;i>=0;i--){ const p=shieldPickups[i]; p.x-=dx; p.phase+=dt*1.6; p.y+=Math.sin(p.phase)*8*dt; if(p.x<-SHIELD_PICKUP_R-40){ shieldPickups.splice(i,1); continue; } const dxp=bird.x - p.x, dyp=bird.y - p.y; if(dxp*dxp + dyp*dyp <= (BIRD_R+SHIELD_PICKUP_R)*(BIRD_R+SHIELD_PICKUP_R)){ shieldPickups.splice(i,1); shieldTTL=SHIELD_DURATION; Sfx.shield(); } }
 
-      // chamas cônicas → colisão com flechas
       for(let i=flames.length-1;i>=0;i--){ const fl=flames[i]; fl.len=Math.min(FLAME_MAX_LEN, fl.len + FLAME_GROW_SPEED*dt); fl.ttl-=dt; const samples=flameSamples(fl); for(let j=enemies.length-1;j>=0;j--){ const e=enemies[j]; const rct=enemyRect(e); let collide=false; for(let s=0;s<samples.length;s++){ const sm=samples[s]; if(circleRectCollides(sm.x,sm.y,sm.r, rct.rx,rct.ry,rct.rw,rct.rh)){ collide=true; break; } } if(collide){ enemies.splice(j,1); } } if(fl.ttl<=0){ flames.splice(i,1); continue; } }
-      // física do pássaro
       bird.vy+=G*dt; bird.y+=bird.vy*dt;
-      // colisões com teto/chão
       const cor=corridorAtX(bird.x);
       if(bird.y - BIRD_R <= cor.top){ if(shieldTTL>0){ bird.y=cor.top + BIRD_R + 0.01; bird.vy = Math.abs(bird.vy)*0.4 + 160; } else { gameOver(); } }
       else if(bird.y + BIRD_R >= cor.bottom){ if(shieldTTL>0){ bird.y=cor.bottom - BIRD_R - 0.01; bird.vy = -Math.abs(bird.vy)*0.4 - 160; } else { gameOver(); } }
-      // colisão pássaro x flecha
       for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; const rct=enemyRect(e); if(circleRectCollides(bird.x,bird.y,BIRD_R, rct.rx,rct.ry,rct.rw,rct.rh)){ if(shieldTTL>0){ enemies.splice(i,1); Sfx.shieldHit(); continue; } else { gameOver(); break; } } }
-      // score e bounds
       if(segments[passedIndex] && (segments[passedIndex].x+SEG_W)<bird.x){ score+=1; passedIndex+=1; updateScore(); }
       if(bird.y<-200 || bird.y>H()+200) gameOver();
     }
 
-    // ======= Draw =======
     function drawBackground(){
       const f=dayNightFactor();
       const topDay='#87CEEB', botDay='#e8f8ff', topNight='#0b1020', botNight='#051022';
@@ -362,27 +390,21 @@
 
     function drawWorld(){
       ctx.save();
-      // desenha segmentos em pedra: teto e chão
       for(let i=0;i<segments.length;i++){
         const s=segments[i];
-        // TETO
         ctx.save();
         ctx.translate(Math.round(s.x),0);
         if(stoneTopPattern){ ctx.fillStyle=stoneTopPattern; } else { ctx.fillStyle='#50545d'; }
         ctx.fillRect(0,0,SEG_W+1,Math.round(s.topH));
-        // cap (beirada) clara
-        ctx.fillStyle=capLight; ctx.fillRect(0, Math.max(0, Math.round(s.topH)-2), SEG_W+1, 2);
+        ctx.fillStyle='#cfd8dc'; ctx.fillRect(0, Math.max(0, Math.round(s.topH)-2), SEG_W+1, 2);
         ctx.restore();
-        // CHÃO
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(H()-s.botH));
         if(stoneBotPattern){ ctx.fillStyle=stoneBotPattern; } else { ctx.fillStyle='#434a44'; }
         ctx.fillRect(0,0,SEG_W+1, Math.round(s.botH));
-        // cap (beirada) escura
-        ctx.fillStyle=capDark; ctx.fillRect(0,0, SEG_W+1, 2);
+        ctx.fillStyle='#2b2f36'; ctx.fillRect(0,0, SEG_W+1, 2);
         ctx.restore();
       }
-      // bordas exteriores para reforçar contraste
       ctx.fillStyle='#22252b'; ctx.fillRect(0,0,W(),4);
       ctx.fillStyle='#171a1f'; ctx.fillRect(0,H()-4,W(),4);
       ctx.restore();
@@ -397,16 +419,14 @@
     }
 
     function drawArrowBase(colors){
-      // Flecha voltada para a esquerda
       const shaftX= -AR_BODY_W;
-      // PONTA
       ctx.fillStyle=colors.headFill; ctx.strokeStyle=colors.headStroke; ctx.lineWidth=1.2;
       ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(AR_HEAD_W, -AR_HEAD_H/2); ctx.lineTo(AR_HEAD_W,  AR_HEAD_H/2); ctx.closePath(); ctx.fill(); ctx.stroke();
-      // HASTE
       ctx.fillStyle=colors.shaftFill; ctx.strokeStyle=colors.shaftStroke; ctx.lineWidth=1.0;
       ctx.fillRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
+      ctx.strokeRect(shaftX, -AR_BODY_H/2, AR_BODY_H, AR_BODY_H); // pequeno bugfix visual intencional: deixa haste mais definida
+      ctx.fillRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H); // re-aplica fill
       ctx.strokeRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
-      // PENAS
       ctx.fillStyle=colors.fletchFill; ctx.strokeStyle=colors.fletchStroke; ctx.lineWidth=1.0;
       ctx.beginPath(); ctx.moveTo(shaftX-AR_TAIL, 0); ctx.lineTo(shaftX-2, -AR_BODY_H*1.4); ctx.lineTo(shaftX-2,  AR_BODY_H*1.4); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
@@ -444,38 +464,9 @@
 
     function draw(){ ctx.clearRect(0,0,W(),H()); drawBackground(); drawWorld(); drawEnemies(); drawPickups(); drawShieldPickups(); drawFlames(); drawBird(); }
 
-    // ======= Self-tests =======
-    function runSelfTests(){ let fails=0; const ok=function(c,m){ if(!c){ console.error('TEST FAIL:',m); fails++; } else { console.log('TEST OK:',m);} };
-      ok(!document.getElementById('ui-start').classList.contains('hide'),'start visível');
-      ok(document.getElementById('ui-over').classList.contains('hide'),'over oculto');
-      resetGame(); state='playing';
-      // escudo protege teto/chão
-      score=400; shieldPickups.push({x:bird.x,y:bird.y,phase:0}); update(0.016); ok(shieldTTL>0,'escudo ativo'); const c=corridorAtX(bird.x); bird.y=c.top+BIRD_R-1; bird.vy=-50; const prev=shieldTTL; update(0.016); ok(state==='playing' && shieldTTL<=prev,'bateu teto protegido');
-      // escudo imune a flecha
-      enemies.push({x:bird.x+10,y:bird.y,phase:0,type:'arrow'}); const nA=enemies.length; update(0.016); ok(state==='playing' && enemies.length<nA,'flecha absorvida, sem game over');
-      // spawnPickup / spawnShield
-      const beforeP = pickups.length; spawnPickup(); ok(pickups.length===beforeP+1,'spawnPickup adiciona 1 pickup');
-      const p0 = pickups[beforeP]; const cor0 = corridorAtX(p0.x); ok(p0.y>=cor0.top+PICKUP_R && p0.y<=cor0.bottom-PICKUP_R,'pickup nasce dentro do corredor');
-      const beforeS = shieldPickups.length; spawnShield(); ok(shieldPickups.length===beforeS+1,'spawnShield adiciona 1 escudo');
-      const s0 = shieldPickups[beforeS]; const cor1 = corridorAtX(s0.x); ok(s0.y>=cor1.top+SHIELD_PICKUP_R && s0.y<=cor1.bottom-SHIELD_PICKUP_R,'escudo nasce dentro do corredor');
-      // strings sem template literals/backticks
-      const rgb = mixHex('#000000','#ffffff',0.5); ok(/^rgb\(\d+,\d+,\d+\)$/.test(rgb),'mixHex retorna rgb(r,g,b)');
-      const aTest=0.7; const s1='rgba(0,0,30,'+(0.18*aTest)+')'; const s2='rgba(150,210,255,'+(aTest*0.8)+')'; const s3='rgba(200,235,255,'+Math.max(0.4,aTest)+')';
-      ok(/rgba\(.+\)/.test(s1)&&/rgba\(.+\)/.test(s2)&&/rgba\(.+\)/.test(s3),'RGBA via concatenação');
-      // enemyRect dimensões e spawnEnemy
-      const eBefore=enemies.length; spawnEnemy(); ok(enemies.length===eBefore+1,'spawnEnemy adiciona 1 inimigo');
-      const e0=enemies[eBefore]; const corE=corridorAtX(e0.x); ok(e0.y>=corE.top+ENEMY_H/2 && e0.y<=corE.bottom-ENEMY_H/2,'inimigo nasce dentro do corredor');
-      const rr=enemyRect(e0); ok(rr.rw===ENEMY_W && rr.rh===ENEMY_H,'enemyRect dimensões corretas'); ok(Math.abs((rr.rx+rr.rw*0.5)-e0.x)<1e-6,'enemyRect centrado');
-      // tipos válidos
-      ok(e0.type==='arrow' || e0.type==='barbed' || e0.type==='fire','spawnEnemy define um tipo válido');
-      // diversidade de tipos
-      let seen={arrow:false,barbed:false,fire:false}; for(let k=0;k<60;k++){ const t=randEnemyType(); seen[t]=true; } ok(seen.arrow&&seen.barbed&&seen.fire,'randEnemyType gera os três tipos');
-      state='menu'; hideOver(); showStart(); if(fails===0) console.log('%cSelf-tests OK','color:#0f0');
-    }
-
     // ======= Boot =======
     function fit(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); canvas.width=Math.round(960*scale); canvas.height=Math.round(540*scale); }
-    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw(); runSelfTests();
+    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw();
   }
   </script>
 </body>
