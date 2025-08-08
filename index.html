@@ -9,7 +9,7 @@
     html,body{ margin:0; height:100%; background:radial-gradient(1000px 600px at 20% 20%, #0f1a3a, var(--bg)); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,'Noto Sans','Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; }
     .wrap{ display:grid; place-items:center; height:100%; }
     canvas{ background:#0b1020; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); outline:none; }
-    /* Oculta o cursor apenas durante o jogo */
+    /* ⬇️ Oculta o cursor apenas durante o jogo (classe aplicada via JS) */
     canvas.playing{ cursor:none; }
 
     .hud{ position:fixed; top:12px; left:50%; transform:translateX(-50%); font-weight:700; text-shadow:0 2px 6px rgba(0,0,0,.4); user-select:none; pointer-events:none; }
@@ -29,20 +29,6 @@
     .bad{ color:var(--bad); font-weight:700; }
     .audio-ctrl{ position:fixed; top:12px; right:12px; z-index:10; }
     .audio-ctrl button{ background:rgba(0,0,0,.45); color:#eaf2ff; border:1px solid rgba(255,255,255,.2); border-radius:12px; padding:8px 10px; cursor:pointer; }
-
-    /* ===== Mobile Fire Pad (alvo translúcido) ===== */
-    .fire-pad{ position:fixed; left:14px; bottom:14%; width:min(26vw,110px); height:min(26vw,110px); border-radius:50%;
-      display:none; align-items:center; justify-content:center; z-index:11; user-select:none; touch-action:none;
-      background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.32) 0 6%, rgba(255,255,255,0) 7% 26%, rgba(255,255,255,.26) 27% 33%, rgba(255,255,255,0) 34% 54%, rgba(255,255,255,.22) 55% 61%, rgba(255,255,255,0) 62% 100%),
-                  radial-gradient(circle at 50% 50%, rgba(120,200,255,.18), rgba(120,200,255,0) 70%);
-      border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 22px rgba(0,0,0,.3); opacity:.5; backdrop-filter:blur(2px);
-    }
-    .fire-pad.show{ display:flex; }
-    .fire-pad:active{ transform:scale(.98); opacity:.75; }
-    .fire-pad .dot{ width:20%; height:20%; border-radius:50%; background:rgba(255,255,255,.5); box-shadow:0 0 12px rgba(255,255,255,.6), inset 0 0 6px rgba(0,0,0,.2); }
-
-    /* só mostra o pad em telas touch/coarse quando marcado como .show  */
-    @media (pointer:coarse){ .fire-pad{ display:none; } .fire-pad.show{ display:flex; } }
   </style>
 </head>
 <body>
@@ -53,9 +39,6 @@
   <div class="ammo" id="ammo">🔥 0</div>
   <div class="audio-ctrl"><button id="btn-audio" title="Alternar sons">🔊 Som</button></div>
 
-  <!-- Botão/área de fogo para mobile -->
-  <div id="fire-pad" class="fire-pad" aria-label="Atirar" title="Atirar"><div class="dot"></div></div>
-
   <!-- UI overlays -->
   <div class="ui" id="ui-start">
     <div class="panel">
@@ -63,7 +46,7 @@
       <p class="tips">
         • Espaço para <strong>bater asas</strong>.<br/>
         • Clique/toque na tela também <strong>bate asas</strong>.<br/>
-        • → para soltar a <strong>chama</strong> (requer 🔥). Em telas touch, use o <strong>alvo translúcido</strong> à esquerda.<br/>
+        • → para soltar a <strong>chama</strong> (requer 🔥).<br/>
         • Desvie do <strong>teto</strong>, <strong>chão</strong> e <strong>flechas medievais</strong>. Escudo protege temporariamente.
       </p>
       <div class="btns">
@@ -135,11 +118,6 @@
     let shieldPickups=[], shieldTimer=0;
     let shieldTTL=0;
 
-    // ======= Touch detection =======
-    const IS_TOUCH = (('ontouchstart' in window) || navigator.maxTouchPoints>0 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
-    document.body.classList.toggle('has-touch', IS_TOUCH);
-    const firePad = document.getElementById('fire-pad');
-
     // ======= Util =======
     const clamp=function(v,a,b){ return Math.max(a,Math.min(b,v)); };
     const randRange=function(a,b){ return a+Math.random()*(b-a); };
@@ -200,8 +178,7 @@
       resetGame();
       Sfx.start();
       state='playing'; hideStart(); hideOver();
-      canvas.classList.add('playing');
-      if(IS_TOUCH) firePad.classList.add('show'); else firePad.classList.remove('show');
+      canvas.classList.add('playing'); // ⬅️ oculta cursor durante o jogo
       canvas.focus();
       lastTime=performance.now();
       requestAnimationFrame(loop);
@@ -210,8 +187,7 @@
     function gameOver(){
       state='over';
       document.getElementById('final-score').textContent=score;
-      canvas.classList.remove('playing');
-      firePad.classList.remove('show');
+      canvas.classList.remove('playing'); // ⬅️ volta o cursor
       Sfx.over();
       showOver();
     }
@@ -292,12 +268,7 @@
     }, {passive:false});
 
     window.addEventListener('keyup',function(e){ if(e.code==='Space' || e.key===' ' || e.key==='Spacebar') pressed=false; });
-
-    // Canvas: clique/touch bate asas
     ['click','pointerdown','touchstart'].forEach(function(evt){ canvas.addEventListener(evt,function(e){ e.preventDefault(); flap(); }); });
-
-    // Fire pad: clique/touch atira (não propaga)
-    ['pointerdown','touchstart','mousedown','click'].forEach(function(evt){ firePad.addEventListener(evt,function(e){ e.preventDefault(); e.stopPropagation(); shoot(); }, {passive:false}); });
 
     // ======= UI =======
     const uiStart=document.getElementById('ui-start'); const uiOver=document.getElementById('ui-over');
@@ -307,9 +278,9 @@
     function showOver(){ uiOver.classList.remove('hide'); }
 
     document.getElementById('btn-start').onclick=function(){ startGame(); };
-    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Em telas touch, use o alvo translúcido à esquerda para lançar chamas. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → (teclado) ou o alvo (touch) para atirar. Escudo protege temporariamente.'); };
+    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → para atirar. Escudo protege temporariamente.'); };
     document.getElementById('btn-restart').onclick=function(){ startGame(); };
-    document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); firePad.classList.remove('show'); showStart(); hideOver(); };
+    document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); showStart(); hideOver(); };
 
     // ======= Resize =======
     function fitCanvas(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); const w=Math.round(960*scale), h=Math.round(540*scale); canvas.width=w; canvas.height=h; }
@@ -362,7 +333,7 @@
       if(timeElapsed>EASY_TIME && enemyTimer<=0){ spawnEnemy(); enemyTimer=randRange(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX); }
       for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; e.x-=(SPEED+ENEMY_SPEED)*dt; e.phase += dt*ENEMY_WOBBLE_HZ*2*Math.PI; if(e.x<-ENEMY_W-60) { enemies.splice(i,1); continue; } }
 
-      if(timeElapsed>EASY_TIME && pickupTimer<=0){ spawnPickup(); pickupTimer=randRange(PICKUP_SPAWN_MIN,PICKUP_SPAWN_MAX); }
+      if(timeElapsed>EASY_TIME && pickupTimer<=0){ spawnPickup(); pickupTimer=randRange(PICKUP_SPAWN_MIN, PICKUP_SPAWN_MAX); }
       for(let i=pickups.length-1;i>=0;i--){ const p=pickups[i]; p.x-=dx; p.phase+=dt*2; p.y+=Math.sin(p.phase)*10*dt; if(p.x<-PICKUP_R-40){ pickups.splice(i,1); continue; } const dxp=bird.x - p.x, dyp=bird.y - p.y; if(dxp*dxp + dyp*dyp <= (BIRD_R+PICKUP_R)*(BIRD_R+PICKUP_R)){ pickups.splice(i,1); ammo+=1; updateAmmo(); Sfx.pickup(); } }
 
       if(score>=SHIELD_START_SCORE && shieldTimer<=0){ spawnShield(); shieldTimer=randRange(SHIELD_SPAWN_MIN, SHIELD_SPAWN_MAX); }
@@ -424,8 +395,6 @@
       ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(AR_HEAD_W, -AR_HEAD_H/2); ctx.lineTo(AR_HEAD_W,  AR_HEAD_H/2); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle=colors.shaftFill; ctx.strokeStyle=colors.shaftStroke; ctx.lineWidth=1.0;
       ctx.fillRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
-      ctx.strokeRect(shaftX, -AR_BODY_H/2, AR_BODY_H, AR_BODY_H); // pequeno bugfix visual intencional: deixa haste mais definida
-      ctx.fillRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H); // re-aplica fill
       ctx.strokeRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
       ctx.fillStyle=colors.fletchFill; ctx.strokeStyle=colors.fletchStroke; ctx.lineWidth=1.0;
       ctx.beginPath(); ctx.moveTo(shaftX-AR_TAIL, 0); ctx.lineTo(shaftX-2, -AR_BODY_H*1.4); ctx.lineTo(shaftX-2,  AR_BODY_H*1.4); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -464,7 +433,6 @@
 
     function draw(){ ctx.clearRect(0,0,W(),H()); drawBackground(); drawWorld(); drawEnemies(); drawPickups(); drawShieldPickups(); drawFlames(); drawBird(); }
 
-    // ======= Boot =======
     function fit(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); canvas.width=Math.round(960*scale); canvas.height=Math.round(540*scale); }
     fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw();
   }
