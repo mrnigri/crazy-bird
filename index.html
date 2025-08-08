@@ -78,15 +78,13 @@
     const SLOPE_PX_PER_SEC=110, PATTERN_MIN_S=1.6, PATTERN_MAX_S=3.2;
 
     // ======= INIMIGO: FLECHAS MEDIEVAIS =======
-    const ENEMY_W=58, ENEMY_H=18;   // caixa de colisão base (retângulo em torno da flecha)
+    const ENEMY_W=58, ENEMY_H=18;
     const ENEMY_SPEED=240;
     const ENEMY_SPAWN_MIN=0.9, ENEMY_SPAWN_MAX=1.8;
-    const ENEMY_WOBBLE_HZ=2.0;      // leve oscilação no voo
-
-    // Desenho da flecha (unidade base, depois escala)
-    const AR_HEAD_W=18, AR_HEAD_H=12; // largura/altura da ponta
-    const AR_BODY_W=40, AR_BODY_H=4;  // haste
-    const AR_TAIL=10;                 // penas
+    const ENEMY_WOBBLE_HZ=2.0;
+    const AR_HEAD_W=18, AR_HEAD_H=12;
+    const AR_BODY_W=40, AR_BODY_H=4;
+    const AR_TAIL=10;
 
     // Chama cônica (cone pra direita)
     const FIRE_COOLDOWN=0.25;
@@ -99,11 +97,11 @@
     const PICKUP_SPAWN_MIN=3.5, PICKUP_SPAWN_MAX=7.5;
     // Power-up 🛡️ (escudo)
     const SHIELD_PICKUP_R=14;
-    const SHIELD_SPAWN_MIN=8, SHIELD_SPAWN_MAX=14; // esporádico
+    const SHIELD_SPAWN_MIN=8, SHIELD_SPAWN_MAX=14;
     const SHIELD_START_SCORE=400;
-    const SHIELD_DURATION=10; // segundos
-    const SHIELD_WARN=2; // últimos 2s piscando
-    const SHIELD_BLINK_HZ=8; // frequência da piscada
+    const SHIELD_DURATION=10;
+    const SHIELD_WARN=2;
+    const SHIELD_BLINK_HZ=8;
 
     // ======= Estado =======
     let state='menu';
@@ -111,10 +109,10 @@
     let segments=[], lastGenX=0, score=0, passedIndex=0, genX=0;
     let enemies=[], enemyTimer=0; let timeElapsed=0;
     let flames=[], fireCooldown=0;
-    let pickups=[], pickupTimer=0; // 🔥
-    let ammo=0; // munições
-    let shieldPickups=[], shieldTimer=0; // 🛡️
-    let shieldTTL=0; // tempo restante do escudo
+    let pickups=[], pickupTimer=0;
+    let ammo=0;
+    let shieldPickups=[], shieldTimer=0;
+    let shieldTTL=0;
 
     // ======= Util =======
     const clamp=function(v,a,b){ return Math.max(a,Math.min(b,v)); };
@@ -205,7 +203,6 @@
     function corridorAtX(x){ for(let i=0;i<segments.length;i++){ const s=segments[i]; if(x>=s.x && x<s.x+SEG_W) return { top:s.topH, bottom:H()-s.botH }; } const s2=segments[segments.length-1]||{topH:EASY_TOP,botH:EASY_BOT}; return { top:s2.topH, bottom:H()-s2.botH }; }
 
     // ======= Tipos de flecha =======
-    // pesos: normal 45%, denteada 30%, incendiária 25%
     function randEnemyType(){ const r=Math.random(); if(r<0.45) return 'arrow'; if(r<0.75) return 'barbed'; return 'fire'; }
 
     // ======= Spawn inimigo =======
@@ -270,12 +267,50 @@
 
     // ======= Resize =======
     function fitCanvas(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); const w=Math.round(960*scale), h=Math.round(540*scale); canvas.width=w; canvas.height=h; }
-    window.addEventListener('resize',function(){ const oldH=H(); fitCanvas(); const sy=H()/oldH; segments=segments.map(function(s){ return {x:s.x, topH:s.topH*sy, botH:s.botH*sy}; }); prepareStars(); generateUntil(W()+200); });
+    window.addEventListener('resize',function(){ const oldH=H(); fitCanvas(); const sy=H()/oldH; segments=segments.map(function(s){ return {x:s.x, topH:s.topH*sy, botH:s.botH*sy}; }); prepareStars(); generateUntil(W()+200); buildPatterns(); });
     fitCanvas();
 
     // ======= Som (SFX) UI =======
     updateAudioUi();
     document.getElementById('btn-audio').addEventListener('click',function(){ Sfx.toggle(); updateAudioUi(); });
+
+    // ======= Padrões de pedra (desempenho) =======
+    let stoneTopPattern=null, stoneBotPattern=null, capLight='#cfd8dc', capDark='#2b2f36';
+    function makeStonePattern(w,h, base1, base2, mortar){
+      const off=document.createElement('canvas'); off.width=w; off.height=h; const c=off.getContext('2d');
+      // fundo em gradiente sutil
+      const g=c.createLinearGradient(0,0,0,h);
+      g.addColorStop(0, base1); g.addColorStop(1, base2);
+      c.fillStyle=g; c.fillRect(0,0,w,h);
+      // linhas de argamassa
+      c.strokeStyle=mortar; c.lineWidth=2;
+      const rowH=Math.floor(h/2);
+      for(let r=0;r<h; r+=rowH){ c.beginPath(); c.moveTo(0,r+0.5); c.lineTo(w,r+0.5); c.stroke(); }
+      // tijolos: 2 fileiras com offset
+      const brickW=Math.floor(w/4);
+      for(let r=0;r<2;r++){
+        const y=r*rowH; const offset=(r%2)? Math.floor(brickW/2) : 0;
+        for(let x=-offset; x<w; x+=brickW){
+          // borda de tijolo (mortalha)
+          c.strokeStyle=mortar; c.lineWidth=1; c.strokeRect(x+0.5,y+0.5,brickW-1,rowH-1);
+          // variação sutil
+          const alpha=0.06+Math.random()*0.06; c.fillStyle='rgba(0,0,0,'+alpha+')'; c.fillRect(x+2,y+2,brickW-4,rowH-4);
+        }
+      }
+      // manchas de musgo
+      for(let i=0;i<5;i++){
+        const mx=Math.random()*w, my=Math.random()*h; const mr=4+Math.random()*7; const mg=c.createRadialGradient(mx,my,1,mx,my,mr);
+        mg.addColorStop(0,'rgba(120,150,120,0.25)'); mg.addColorStop(1,'rgba(120,150,120,0)');
+        c.fillStyle=mg; c.beginPath(); c.arc(mx,my,mr,0,Math.PI*2); c.fill();
+      }
+      return c.createPattern(off,'repeat');
+    }
+    function buildPatterns(){
+      // Tons um pouco diferentes para teto e chão
+      stoneTopPattern=makeStonePattern(64,32,'#6c717a','#4a5058','rgba(20,22,25,0.55)');
+      stoneBotPattern=makeStonePattern(64,32,'#5e665f','#3f4742','rgba(18,20,22,0.55)');
+    }
+    buildPatterns();
 
     // ======= Loop =======
     let lastTime=performance.now();
@@ -287,14 +322,9 @@
       // timers
       timeElapsed+=dt; enemyTimer-=dt; pickupTimer-=dt; shieldTimer-=dt; fireCooldown=Math.max(0, fireCooldown-dt); shieldTTL=Math.max(0, shieldTTL-dt);
 
-      // ===== inimigos (flechas) =====
+      // inimigos (flechas)
       if(timeElapsed>EASY_TIME && enemyTimer<=0){ spawnEnemy(); enemyTimer=randRange(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX); }
-      for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i];
-        e.x-=(SPEED+ENEMY_SPEED)*dt;
-        e.phase += dt*ENEMY_WOBBLE_HZ*2*Math.PI; // oscilação leve
-        if(e.x<-ENEMY_W-60) { enemies.splice(i,1); continue; }
-      }
+      for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; e.x-=(SPEED+ENEMY_SPEED)*dt; e.phase += dt*ENEMY_WOBBLE_HZ*2*Math.PI; if(e.x<-ENEMY_W-60) { enemies.splice(i,1); continue; } }
 
       // pickups 🔥
       if(timeElapsed>EASY_TIME && pickupTimer<=0){ spawnPickup(); pickupTimer=randRange(PICKUP_SPAWN_MIN, PICKUP_SPAWN_MAX); }
@@ -305,39 +335,17 @@
       for(let i=shieldPickups.length-1;i>=0;i--){ const p=shieldPickups[i]; p.x-=dx; p.phase+=dt*1.6; p.y+=Math.sin(p.phase)*8*dt; if(p.x<-SHIELD_PICKUP_R-40){ shieldPickups.splice(i,1); continue; } const dxp=bird.x - p.x, dyp=bird.y - p.y; if(dxp*dxp + dyp*dyp <= (BIRD_R+SHIELD_PICKUP_R)*(BIRD_R+SHIELD_PICKUP_R)){ shieldPickups.splice(i,1); shieldTTL=SHIELD_DURATION; Sfx.shield(); } }
 
       // chamas cônicas → colisão com flechas
-      for(let i=flames.length-1;i>=0;i--){
-        const fl=flames[i];
-        fl.len=Math.min(FLAME_MAX_LEN, fl.len + FLAME_GROW_SPEED*dt);
-        fl.ttl-=dt;
-        const samples=flameSamples(fl);
-        for(let j=enemies.length-1;j>=0;j--){
-          const e=enemies[j]; const rct=enemyRect(e);
-          let collide=false;
-          for(let s=0;s<samples.length;s++){ const sm=samples[s]; if(circleRectCollides(sm.x,sm.y,sm.r, rct.rx,rct.ry,rct.rw,rct.rh)){ collide=true; break; } }
-          if(collide){ enemies.splice(j,1); }
-        }
-        if(fl.ttl<=0){ flames.splice(i,1); continue; }
-      }
+      for(let i=flames.length-1;i>=0;i--){ const fl=flames[i]; fl.len=Math.min(FLAME_MAX_LEN, fl.len + FLAME_GROW_SPEED*dt); fl.ttl-=dt; const samples=flameSamples(fl); for(let j=enemies.length-1;j>=0;j--){ const e=enemies[j]; const rct=enemyRect(e); let collide=false; for(let s=0;s<samples.length;s++){ const sm=samples[s]; if(circleRectCollides(sm.x,sm.y,sm.r, rct.rx,rct.ry,rct.rw,rct.rh)){ collide=true; break; } } if(collide){ enemies.splice(j,1); } } if(fl.ttl<=0){ flames.splice(i,1); continue; } }
       // física do pássaro
       bird.vy+=G*dt; bird.y+=bird.vy*dt;
-      // ===== COLISÃO TETO/CHÃO =====
+      // colisões com teto/chão
       const cor=corridorAtX(bird.x);
-      if(bird.y - BIRD_R <= cor.top){
-        if(shieldTTL>0){ bird.y=cor.top + BIRD_R + 0.01; bird.vy = Math.abs(bird.vy)*0.4 + 160; } else { gameOver(); }
-      } else if(bird.y + BIRD_R >= cor.bottom){
-        if(shieldTTL>0){ bird.y=cor.bottom - BIRD_R - 0.01; bird.vy = -Math.abs(bird.vy)*0.4 - 160; } else { gameOver(); }
-      }
+      if(bird.y - BIRD_R <= cor.top){ if(shieldTTL>0){ bird.y=cor.top + BIRD_R + 0.01; bird.vy = Math.abs(bird.vy)*0.4 + 160; } else { gameOver(); } }
+      else if(bird.y + BIRD_R >= cor.bottom){ if(shieldTTL>0){ bird.y=cor.bottom - BIRD_R - 0.01; bird.vy = -Math.abs(bird.vy)*0.4 - 160; } else { gameOver(); } }
       // colisão pássaro x flecha
-      for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; const rct=enemyRect(e);
-        if(circleRectCollides(bird.x,bird.y,BIRD_R, rct.rx,rct.ry,rct.rw,rct.rh)){
-          if(shieldTTL>0){ enemies.splice(i,1); Sfx.shieldHit(); continue; }
-          else { gameOver(); break; }
-        }
-      }
-      // score
+      for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; const rct=enemyRect(e); if(circleRectCollides(bird.x,bird.y,BIRD_R, rct.rx,rct.ry,rct.rw,rct.rh)){ if(shieldTTL>0){ enemies.splice(i,1); Sfx.shieldHit(); continue; } else { gameOver(); break; } } }
+      // score e bounds
       if(segments[passedIndex] && (segments[passedIndex].x+SEG_W)<bird.x){ score+=1; passedIndex+=1; updateScore(); }
-      // segurança fora da tela
       if(bird.y<-200 || bird.y>H()+200) gameOver();
     }
 
@@ -352,98 +360,60 @@
       if(f>0){ ctx.save(); ctx.fillStyle='rgba(0,0,30,'+(0.18*f)+')'; ctx.fillRect(0,0,W(),H()); ctx.restore(); }
     }
 
-    function drawWorld(){ ctx.save(); for(let i=0;i<segments.length;i++){ const s=segments[i]; ctx.fillStyle='#2c8a5f'; ctx.fillRect(Math.round(s.x),0,SEG_W+1,Math.round(s.topH)); ctx.fillStyle='#2e7d32'; ctx.fillRect(Math.round(s.x), Math.round(H()-s.botH), SEG_W+1, Math.round(s.botH)); } ctx.fillStyle='#1b5e20'; ctx.fillRect(0,0,W(),6); ctx.fillRect(0,H()-6,W(),6); ctx.restore(); }
+    function drawWorld(){
+      ctx.save();
+      // desenha segmentos em pedra: teto e chão
+      for(let i=0;i<segments.length;i++){
+        const s=segments[i];
+        // TETO
+        ctx.save();
+        ctx.translate(Math.round(s.x),0);
+        if(stoneTopPattern){ ctx.fillStyle=stoneTopPattern; } else { ctx.fillStyle='#50545d'; }
+        ctx.fillRect(0,0,SEG_W+1,Math.round(s.topH));
+        // cap (beirada) clara
+        ctx.fillStyle=capLight; ctx.fillRect(0, Math.max(0, Math.round(s.topH)-2), SEG_W+1, 2);
+        ctx.restore();
+        // CHÃO
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(H()-s.botH));
+        if(stoneBotPattern){ ctx.fillStyle=stoneBotPattern; } else { ctx.fillStyle='#434a44'; }
+        ctx.fillRect(0,0,SEG_W+1, Math.round(s.botH));
+        // cap (beirada) escura
+        ctx.fillStyle=capDark; ctx.fillRect(0,0, SEG_W+1, 2);
+        ctx.restore();
+      }
+      // bordas exteriores para reforçar contraste
+      ctx.fillStyle='#22252b'; ctx.fillRect(0,0,W(),4);
+      ctx.fillStyle='#171a1f'; ctx.fillRect(0,H()-4,W(),4);
+      ctx.restore();
+    }
 
     function drawEnemies(){
-      ctx.save();
-      ctx.globalCompositeOperation='source-over';
-      ctx.globalAlpha=1;
-      ctx.lineJoin='round';
-      ctx.lineCap='round';
+      ctx.save(); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.lineJoin='round'; ctx.lineCap='round';
       for(let i=0;i<enemies.length;i++){
-        const e=enemies[i];
-        const wob=Math.sin(e.phase)*0.12; // radianos
-        const cx=Math.round(e.x), cy=Math.round(e.y);
-        const scale=1.0; // pode variar por tipo depois
-        ctx.save();
-        ctx.translate(cx,cy);
-        ctx.rotate(wob);
-        ctx.scale(scale,scale);
-        if(e.type==='barbed') drawArrowBarbed();
-        else if(e.type==='fire') drawArrowFire();
-        else drawArrowSimple();
-        ctx.restore();
+        const e=enemies[i]; const wob=Math.sin(e.phase)*0.12; const cx=Math.round(e.x), cy=Math.round(e.y); ctx.save(); ctx.translate(cx,cy); ctx.rotate(wob); if(e.type==='barbed') drawArrowBarbed(); else if(e.type==='fire') drawArrowFire(); else drawArrowSimple(); ctx.restore();
       }
       ctx.restore();
     }
 
     function drawArrowBase(colors){
-      // Desenha uma flecha apontando para a esquerda (voando da direita -> esquerda)
-      // Estrutura: ponta triangular, haste, penas em V
-      const shaftX= -AR_BODY_W; // haste vai da ponta para trás
+      // Flecha voltada para a esquerda
+      const shaftX= -AR_BODY_W;
       // PONTA
       ctx.fillStyle=colors.headFill; ctx.strokeStyle=colors.headStroke; ctx.lineWidth=1.2;
-      ctx.beginPath();
-      ctx.moveTo(0,0);
-      ctx.lineTo(AR_HEAD_W, -AR_HEAD_H/2);
-      ctx.lineTo(AR_HEAD_W,  AR_HEAD_H/2);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(AR_HEAD_W, -AR_HEAD_H/2); ctx.lineTo(AR_HEAD_W,  AR_HEAD_H/2); ctx.closePath(); ctx.fill(); ctx.stroke();
       // HASTE
       ctx.fillStyle=colors.shaftFill; ctx.strokeStyle=colors.shaftStroke; ctx.lineWidth=1.0;
       ctx.fillRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
       ctx.strokeRect(shaftX, -AR_BODY_H/2, AR_BODY_W, AR_BODY_H);
       // PENAS
       ctx.fillStyle=colors.fletchFill; ctx.strokeStyle=colors.fletchStroke; ctx.lineWidth=1.0;
-      ctx.beginPath();
-      ctx.moveTo(shaftX-AR_TAIL, 0);
-      ctx.lineTo(shaftX-2, -AR_BODY_H*1.4);
-      ctx.lineTo(shaftX-2,  AR_BODY_H*1.4);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(shaftX-AR_TAIL, 0); ctx.lineTo(shaftX-2, -AR_BODY_H*1.4); ctx.lineTo(shaftX-2,  AR_BODY_H*1.4); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
 
-    function drawArrowSimple(){
-      drawArrowBase({
-        headFill: '#cfd8dc', headStroke: '#90a4ae',
-        shaftFill: '#6d4c41', shaftStroke: '#4e342e',
-        fletchFill: '#b0bec5', fletchStroke: '#78909c'
-      });
-    }
-
-    function drawArrowBarbed(){
-      drawArrowBase({
-        headFill: '#d7ccc8', headStroke: '#8d6e63',
-        shaftFill: '#5d4037', shaftStroke: '#3e2723',
-        fletchFill: '#c5e1a5', fletchStroke: '#7cb342'
-      });
-      // ganchos da ponta
-      ctx.fillStyle='#8d6e63';
-      ctx.beginPath();
-      ctx.moveTo(AR_HEAD_W*0.75, -AR_HEAD_H/2);
-      ctx.lineTo(AR_HEAD_W*0.75 + 6, -AR_HEAD_H/2 - 6);
-      ctx.lineTo(AR_HEAD_W*0.85, -AR_HEAD_H/2 + 2);
-      ctx.closePath(); ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(AR_HEAD_W*0.75,  AR_HEAD_H/2);
-      ctx.lineTo(AR_HEAD_W*0.75 + 6,  AR_HEAD_H/2 + 6);
-      ctx.lineTo(AR_HEAD_W*0.85,  AR_HEAD_H/2 - 2);
-      ctx.closePath(); ctx.fill();
-    }
-
-    function drawArrowFire(){
-      drawArrowBase({
-        headFill: '#ffcc80', headStroke: '#ff8a65',
-        shaftFill: '#6d4c41', shaftStroke: '#4e342e',
-        fletchFill: '#ffab91', fletchStroke: '#ff7043'
-      });
-      // fogo na cauda
-      const grad=ctx.createRadialGradient(-AR_BODY_W-AR_TAIL,0,2, -AR_BODY_W-AR_TAIL,0, 16);
-      grad.addColorStop(0,'rgba(255,255,160,0.95)');
-      grad.addColorStop(0.4,'rgba(255,160,0,0.8)');
-      grad.addColorStop(1,'rgba(255,80,0,0)');
-      ctx.fillStyle=grad;
-      ctx.beginPath(); ctx.arc(-AR_BODY_W-AR_TAIL,0,16,0,Math.PI*2); ctx.fill();
-    }
+    function drawArrowSimple(){ drawArrowBase({ headFill:'#cfd8dc', headStroke:'#90a4ae', shaftFill:'#6d4c41', shaftStroke:'#4e342e', fletchFill:'#b0bec5', fletchStroke:'#78909c' }); }
+    function drawArrowBarbed(){ drawArrowBase({ headFill:'#d7ccc8', headStroke:'#8d6e63', shaftFill:'#5d4037', shaftStroke:'#3e2723', fletchFill:'#c5e1a5', fletchStroke:'#7cb342' }); ctx.fillStyle='#8d6e63'; ctx.beginPath(); ctx.moveTo(AR_HEAD_W*0.75, -AR_HEAD_H/2); ctx.lineTo(AR_HEAD_W*0.75 + 6, -AR_HEAD_H/2 - 6); ctx.lineTo(AR_HEAD_W*0.85, -AR_HEAD_H/2 + 2); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(AR_HEAD_W*0.75,  AR_HEAD_H/2); ctx.lineTo(AR_HEAD_W*0.75 + 6,  AR_HEAD_H/2 + 6); ctx.lineTo(AR_HEAD_W*0.85,  AR_HEAD_H/2 - 2); ctx.closePath(); ctx.fill(); }
+    function drawArrowFire(){ drawArrowBase({ headFill:'#ffcc80', headStroke:'#ff8a65', shaftFill:'#6d4c41', shaftStroke:'#4e342e', fletchFill:'#ffab91', fletchStroke:'#ff7043' }); const grad=ctx.createRadialGradient(-AR_BODY_W-AR_TAIL,0,2, -AR_BODY_W-AR_TAIL,0, 16); grad.addColorStop(0,'rgba(255,255,160,0.95)'); grad.addColorStop(0.4,'rgba(255,160,0,0.8)'); grad.addColorStop(1,'rgba(255,80,0,0)'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(-AR_BODY_W-AR_TAIL,0,16,0,Math.PI*2); ctx.fill(); }
 
     function drawPickups(){ ctx.save(); for(let i=0;i<pickups.length;i++){ const p=pickups[i]; const grad=ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, PICKUP_R*1.4); grad.addColorStop(0,'rgba(255,240,180,0.9)'); grad.addColorStop(0.5,'rgba(255,150,50,0.8)'); grad.addColorStop(1,'rgba(255,90,0,0.0)'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(p.x,p.y,PICKUP_R*1.4,0,Math.PI*2); ctx.fill(); const inner=ctx.createRadialGradient(p.x-3,p.y-5,1, p.x,p.y,PICKUP_R*0.9); inner.addColorStop(0,'#fff4c1'); inner.addColorStop(0.45,'#ffb703'); inner.addColorStop(1,'#ff6b00'); ctx.fillStyle=inner; ctx.beginPath(); ctx.arc(p.x,p.y,PICKUP_R,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(p.x-2,p.y-2); ctx.quadraticCurveTo(p.x-6,p.y-12,p.x,p.y-10); ctx.quadraticCurveTo(p.x+8,p.y-8,p.x+2,p.y+2); ctx.closePath(); ctx.fill(); } ctx.restore(); }
 
@@ -498,14 +468,14 @@
       const rr=enemyRect(e0); ok(rr.rw===ENEMY_W && rr.rh===ENEMY_H,'enemyRect dimensões corretas'); ok(Math.abs((rr.rx+rr.rw*0.5)-e0.x)<1e-6,'enemyRect centrado');
       // tipos válidos
       ok(e0.type==='arrow' || e0.type==='barbed' || e0.type==='fire','spawnEnemy define um tipo válido');
-      // diversidade de tipos em N spawns
+      // diversidade de tipos
       let seen={arrow:false,barbed:false,fire:false}; for(let k=0;k<60;k++){ const t=randEnemyType(); seen[t]=true; } ok(seen.arrow&&seen.barbed&&seen.fire,'randEnemyType gera os três tipos');
       state='menu'; hideOver(); showStart(); if(fails===0) console.log('%cSelf-tests OK','color:#0f0');
     }
 
     // ======= Boot =======
     function fit(){ const scale=Math.min(window.innerWidth/960, window.innerHeight/540); canvas.width=Math.round(960*scale); canvas.height=Math.round(540*scale); }
-    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); draw(); runSelfTests();
+    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw(); runSelfTests();
   }
   </script>
 </body>
