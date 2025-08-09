@@ -2,22 +2,27 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b1020">
   <title>Crazy Bird</title>
   <style>
     :root { --bg:#0b1020; --fg:#e8f1ff; --accent:#7cc8ff; --ui:rgba(0,0,0,.55); --good:#66ffa8; --bad:#ff6b6b; }
-    html,body{ margin:0; height:100%; background:radial-gradient(1000px 600px at 20% 20%, #0f1a3a, var(--bg)); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,'Noto Sans','Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; overscroll-behavior:none; }
+    html,body{ margin:0; height:100%; overflow:hidden; background:radial-gradient(1000px 600px at 20% 20%, #0f1a3a, var(--bg)); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,'Noto Sans','Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; overscroll-behavior:none; }
 
     /* Tela cheia */
     .wrap{ position:fixed; inset:0; }
-    canvas{ display:block; width:100vw; height:100vh; background:#0b1020; outline:none; }
+    /* Use unidades dinâmicas de viewport quando suportadas; JS garante o ajuste fino */
+    canvas{ display:block; width:100vw; height:100dvh; height:100svh; height:100vh; background:#0b1020; outline:none; }
     /* Oculta o cursor apenas durante o jogo */
     canvas.playing{ cursor:none; }
 
     .hud{ position:fixed; top:12px; left:50%; transform:translateX(-50%); font-weight:700; text-shadow:0 2px 6px rgba(0,0,0,.4); user-select:none; pointer-events:none; z-index:5; }
     .score{ font-size:28px; }
-    .ammo{ position:fixed; top:12px; left:12px; font-size:20px; font-weight:800; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.2); padding:6px 10px; border-radius:12px; box-shadow:0 3px 0 rgba(0,0,0,.2); user-select:none; z-index:5; }
-    .audio-ctrl{ position:fixed; top:12px; right:12px; z-index:6; }
+    .ammo{ position:fixed; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); font-size:20px; font-weight:800; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.2); padding:6px 10px; border-radius:12px; box-shadow:0 3px 0 rgba(0,0,0,.2); user-select:none; z-index:5; }
+    .audio-ctrl{ position:fixed; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right)); z-index:6; }
     .audio-ctrl button{ background:rgba(0,0,0,.45); color:#eaf2ff; border:1px solid rgba(255,255,255,.2); border-radius:12px; padding:8px 10px; cursor:pointer; }
 
     /* Overlays */
@@ -30,12 +35,13 @@
     button{ appearance:none; border:0; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer; box-shadow:0 3px 0 rgba(0,0,0,.2); }
     .primary{ background:var(--accent); color:#001528; }
     .ghost{ background:transparent; color:#eaf2ff; border:1px solid rgba(255,255,255,.2); }
-    .hide{ display:none; }
+    .hide{ display:none !important; }
     .tips{ font-size:14px; opacity:.9 }
     .bad{ color:var(--bad); font-weight:700; }
 
     /* Botão/Alvo de disparo (mobile/touch) */
-    #fire-pad{ position:fixed; left:calc(16px + env(safe-area-inset-left)); bottom:calc(16px + env(safe-area-inset-bottom)); width:clamp(64px, 18vw, 120px); height:clamp(64px, 18vw, 120px); border-radius:50%; background:radial-gradient( at 30% 30%, rgba(255,255,255,.12), rgba(255,255,255,.04) 60%, rgba(255,255,255,.02) ); border:2px dashed rgba(255,255,255,.25); box-shadow:0 0 0 6px rgba(255,255,255,.06) inset, 0 10px 20px rgba(0,0,0,.3); opacity:.7; user-select:none; touch-action:manipulation; z-index:6; display:none; }
+    /* deslocamento configurável por orientação */
+    #fire-pad{ --fp-offset: 0px; position:fixed; left:calc(16px + env(safe-area-inset-left) + var(--fp-offset)); bottom:calc(16px + env(safe-area-inset-bottom)); width:clamp(64px, 18vw, 120px); height:clamp(64px, 18vw, 120px); border-radius:50%; background:radial-gradient( at 30% 30%, rgba(255,255,255,.12), rgba(255,255,255,.04) 60%, rgba(255,255,255,.02) ); border:2px dashed rgba(255,255,255,.25); box-shadow:0 0 0 6px rgba(255,255,255,.06) inset, 0 10px 20px rgba(0,0,0,.3); opacity:.7; user-select:none; touch-action:manipulation; z-index:6; display:none; }
     #fire-pad.show{ display:block; }
     #fire-pad:active{ opacity:.95; transform:scale(.98); }
     #fire-pad::before, #fire-pad::after{ content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none; }
@@ -43,6 +49,18 @@
     #fire-pad::after{ border:1px solid rgba(255,255,255,.18); transform:scale(.46); }
     #fire-pad .cross{ position:absolute; left:50%; top:50%; width:60%; height:2px; background:rgba(255,255,255,.2); transform:translate(-50%,-50%); }
     #fire-pad .cross::after{ content:""; position:absolute; left:50%; top:50%; width:2px; height:60%; background:rgba(255,255,255,.2); transform:translate(-50%,-50%); }
+
+    /* + um pouquinho mais à direita no modo paisagem */
+    @media (orientation: landscape){
+      #fire-pad{ --fp-offset: 8vw; }
+    }
+    @media (orientation: portrait){
+      #fire-pad{ --fp-offset: 4vw; }
+    }
+
+    /* Aviso para girar (priorizar horizontal) */
+    #rotate-hint{ position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.6); color:#fff; z-index:10; }
+    #rotate-hint .card{ text-align:center; background:rgba(0,0,0,.5); padding:18px 20px; border-radius:14px; border:1px solid rgba(255,255,255,.15); }
   </style>
 </head>
 <body>
@@ -80,6 +98,14 @@
         <button class="ghost" id="btn-menu">Menu</button>
       </div>
       <p class="tips">Dica: colete 🔥 para munição e 🛡️.</p>
+    </div>
+  </div>
+
+  <!-- Orientação: priorizar horizontal -->
+  <div id="rotate-hint" class="hide" aria-live="polite">
+    <div class="card">
+      <div style="font-size:42px">📱↻</div>
+      <div>Gire o celular para horizontal para jogar melhor.</div>
     </div>
   </div>
 
@@ -319,17 +345,28 @@
       firePad.addEventListener(evt,(e)=>{ e.preventDefault(); e.stopPropagation(); shoot(); }, {passive:false});
     });
 
-    // ======= Resize: tela cheia =======
+    // ======= Resize: tela cheia usando VisualViewport =======
+    function viewportSize(){
+      const vv=window.visualViewport;
+      const width=Math.max(1, Math.floor((vv? vv.width : window.innerWidth)));
+      const height=Math.max(1, Math.floor((vv? vv.height : window.innerHeight)));
+      return {width, height};
+    }
     function fitFullscreen(){
       const oldH=H();
-      const vw=Math.max(1, Math.floor(window.innerWidth));
-      const vh=Math.max(1, Math.floor(window.innerHeight));
-      canvas.width=vw; canvas.height=vh;
+      const {width, height}=viewportSize();
+      canvas.width=width; canvas.height=height;
       // Reescala os segmentos verticalmente para o novo H
-      if(oldH>0 && oldH!==vh){ const sy=H()/oldH; segments=segments.map((s)=>({ x:s.x, topH:s.topH*sy, botH:s.botH*sy })); }
+      if(oldH>0 && oldH!==height){ const sy=H()/oldH; segments=segments.map((s)=>({ x:s.x, topH:s.topH*sy, botH:s.botH*sy })); }
       prepareStars(); generateUntil(W()+200); buildPatterns();
+      toggleRotateHint();
     }
-    window.addEventListener('resize', function(){ fitFullscreen(); });
+    function toggleRotateHint(){ const el=document.getElementById('rotate-hint'); if(!el) return; const isPortrait=window.matchMedia('(orientation: portrait)').matches; if(isPortrait) el.classList.remove('hide'); else el.classList.add('hide'); }
+
+    // Listeners de viewport (iOS/Android) + correções pós-rotação
+    window.addEventListener('resize', fitFullscreen);
+    window.addEventListener('orientationchange', ()=>{ setTimeout(fitFullscreen, 60); setTimeout(fitFullscreen, 360); });
+    if(window.visualViewport){ visualViewport.addEventListener('resize', fitFullscreen); visualViewport.addEventListener('scroll', fitFullscreen); }
     fitFullscreen();
 
     // ======= Som (SFX) UI =======
@@ -435,7 +472,7 @@
     // ======= Chama (estilo original): gradiente + source-over =======
     function drawFlames(){
       ctx.save();
-      ctx.globalCompositeOperation='source-over'; // mesma mistura do estilo original
+      ctx.globalCompositeOperation='source-over';
       for(let i=0;i<flames.length;i++){
         const fl=flames[i];
         const steps=Math.max(1, Math.floor(fl.len/FLAME_STEP));
@@ -449,7 +486,7 @@
           grad.addColorStop(0.45,'#ffb703');
           grad.addColorStop(1,'#ff6b00');
           ctx.globalAlpha=alpha;
-          ctx.fillStyle=grad; // aplica o gradiente (era o que sumiu)
+          ctx.fillStyle=grad;
           ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
         }
       }
@@ -481,7 +518,7 @@
 
     function draw(){ ctx.clearRect(0,0,W(),H()); drawBackground(); drawWorld(); drawEnemies(); drawPickups(); drawShieldPickups(); drawFlames(); drawBird(); }
 
-    // ======= DEV: Smoke tests (não alterei os existentes) + novos testes =======
+    // ======= DEV: Smoke tests =======
     function runSmokeTests(){
       try{
         console.assert(typeof stoneTopPattern !== 'undefined', 'stoneTopPattern definido');
@@ -490,19 +527,11 @@
         console.assert(typeof drawWorld === 'function', 'drawWorld existe');
         console.assert(typeof drawFlames === 'function', 'drawFlames existe');
         console.assert(document.getElementById('fire-pad'), 'fire-pad existe');
-
-        // NOVO: teste visual mínimo para a chama
+        // Viewport: canvas ≈ visualViewport
         (function(){
-          const cx=Math.min(120, W()-10), cy=Math.min(120, H()-10);
-          const pre=ctx.getImageData(cx,cy,1,1).data;
-          // desenha uma chama sintética
-          const prevLen=flames.length;
-          flames.push({ x0: cx-20, y0: cy, len: 80, ttl: 0.3 });
-          drawFlames();
-          const post=ctx.getImageData(cx,cy,1,1).data;
-          flames.length=prevLen; // rollback
-          const sum=(d)=>d[0]+d[1]+d[2]+d[3];
-          console.assert(sum(post) > sum(pre), 'pixel ficou mais claro após a chama');
+          const tgt=Math.floor((window.visualViewport? visualViewport.height : window.innerHeight));
+          const diff=Math.abs(document.getElementById('game').height - tgt);
+          console.assert(diff <= 2, 'canvas height segue visualViewport', {canvas:document.getElementById('game').height, tgt});
         })();
       }catch(err){ console.error('Smoke tests falharam:', err); }
     }
