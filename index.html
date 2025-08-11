@@ -24,7 +24,7 @@
     .primary{ background:var(--accent); color:#001528; }
     .ghost{ background:transparent; color:#eaf2ff; border:1px solid rgba(255,255,255,.2); }
     .hide{ display:none; }
-    .tips{ font-size:14px; opacity:.9 }
+    .tips{ font-size:14px; opacity:.9; text-align:left; list-style:disc; padding-left:20px; }
     .bad{ color:var(--bad); font-weight:700; }
     .audio-ctrl{ position:fixed; top:12px; right:12px; z-index:10; }
     .audio-ctrl button{ background:rgba(0,0,0,.45); color:#eaf2ff; border:1px solid rgba(255,255,255,.2); border-radius:12px; padding:8px 10px; cursor:pointer; }
@@ -51,13 +51,17 @@
   <div class="ui" id="ui-start">
     <div class="panel">
       <h1>Crazy Bird</h1>
-      <p class="tips">
-        • Espaço para <strong>bater asas</strong>.<br/>
-        • Clique/toque na tela também <strong>bate asas</strong>.<br/>
-        • → para soltar a <strong>chama</strong> (requer 🔥).<br/>
-        • <em>No celular, toque no alvo translúcido no canto inferior direito para atirar</em>.<br/>
-        • Desvie do <strong>teto</strong>, <strong>chão</strong> e <strong>flechas medievais</strong>. Escudo protege temporariamente.
-      </p>
+      <!-- Desktop vs Mobile tips (mostra apenas um dos blocos abaixo via JS) -->
+      <ul class="tips" id="tips-desktop">
+        <li>Desvie do teto, chão e flechas. Escudo protege temporariamente</li>
+        <li>Para bater asas, tecle espaço ou clique na tela</li>
+        <li>Para soltar chama, tecle -&gt;</li>
+      </ul>
+      <ul class="tips hide" id="tips-mobile">
+        <li>Desvie do teto, chão e flechas. Escudo protege temporariamente</li>
+        <li>Para bater asas, toque na tela</li>
+        <li>Para soltar chama, toque no alvo</li>
+      </ul>
       <div class="btns">
         <button class="primary" id="btn-start">Começar</button>
       </div>
@@ -71,7 +75,7 @@
         <button class="primary" id="btn-restart">Reiniciar</button>
         <button class="ghost" id="btn-menu">Menu</button>
       </div>
-      <p class="tips">Dica: colete 🔥 para munição e 🛡️.</p>
+      <p class="tips" style="text-align:center; list-style:none; padding-left:0">Dica: colete itens para avançar mais</p>
     </div>
   </div>
 
@@ -85,7 +89,7 @@
       </div>
       <h1>Gire o celular</h1>
       <p>Este jogo só funciona na <strong>horizontal</strong>. Coloque o aparelho em modo paisagem.</p>
-      <p class="tips">Se o bloqueio de rotação estiver ativado, desative-o.</p>
+      <p class="tips" style="text-align:center; list-style:none; padding-left:0">Se o bloqueio de rotação estiver ativado, desative-o.</p>
     </div>
   </div>
 
@@ -300,7 +304,7 @@
 
     function spawnShield(){
       const x=VW()+70; const cor=corridorAtX(x);
-      const minY=cor.top+SHIELD_PICKUP_R+10; const maxY=cor.bottom-SHIELD_PICKUP_R-10;
+      const minY=cor.top+SHIELD_PICKUP_R+10; const maxY=cor.bottom-SHIELD_PICKUP_R+ -10;
       const y=clamp(randRange(minY,maxY),minY,maxY);
       const phase=Math.random()*Math.PI*2; shieldPickups.push({x:x, y:y, phase:phase});
     }
@@ -363,6 +367,16 @@
     function hideOver(){ uiOver.classList.add('hide'); }
     function showOver(){ uiOver.classList.remove('hide'); }
 
+    // 👉 Ajusta o bloco de dicas conforme o dispositivo
+    function setTips(){
+      const mobile = isMobile();
+      const td=document.getElementById('tips-desktop');
+      const tm=document.getElementById('tips-mobile');
+      if(!td||!tm) return;
+      td.classList.toggle('hide', mobile);
+      tm.classList.toggle('hide', !mobile);
+    }
+
     function showRotate(){
       if(!uiRotate) return;
       uiRotate.classList.remove('hide');
@@ -373,7 +387,7 @@
     function hideRotate(){ if(uiRotate) uiRotate.classList.add('hide'); }
 
     document.getElementById('btn-start').onclick=function(){ startGame(); };
-    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → no teclado ou toque no alvo (canto inferior direito) para atirar. Escudo protege temporariamente.'); };
+    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Desvie do teto, chão e flechas. Escudo protege temporariamente. No desktop: Espaço ou clique para bater asas; seta -> para soltar a chama. No celular: toque na tela para bater asas e toque no alvo (canto inferior direito) para soltar a chama.'); };
     document.getElementById('btn-restart').onclick=function(){ startGame(); };
     document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); showStart(); hideOver(); };
 
@@ -389,7 +403,7 @@
       canvas.style.height=h+'px';
       canvas.width=w; canvas.height=h;
     }
-    window.addEventListener('resize',function(){ const oldH=H(); fitCanvas(); const sy=H()/oldH; segments=segments.map(function(s){ return {x:s.x, topH:s.topH*sy, botH:s.botH*sy}; }); prepareStars(); generateUntil(VW()+200); buildPatterns(); handleOrientationGate(); draw(); });
+    window.addEventListener('resize',function(){ const oldH=H(); fitCanvas(); const sy=H()/oldH; segments=segments.map(function(s){ return {x:s.x, topH:s.topH*sy, botH:s.botH*sy}; }); prepareStars(); generateUntil(VW()+200); buildPatterns(); handleOrientationGate(); setTips(); draw(); });
     fitCanvas();
 
     // ======= Som (SFX) UI =======
@@ -619,11 +633,11 @@
     }
 
     function fit(){ fitCanvas(); }
-    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw();
+    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); setTips(); draw();
 
     // ======= ✅ Gate de orientação no celular =======
     function handleOrientationGate(){
-      if(!isMobile()){ hideRotate(); fitCanvas(); return; }
+      if(!isMobile()){ hideRotate(); fitCanvas(); setTips(); return; }
       if(isPortrait()){
         showRotate();
       } else {
@@ -635,6 +649,7 @@
         fitCanvas();
         setTimeout(function(){ fitCanvas(); generateUntil(VW()+200); draw(); }, 50);
         setTimeout(function(){ fitCanvas(); generateUntil(VW()+200); draw(); }, 250);
+        setTips();
       }
     }
     window.addEventListener('orientationchange', handleOrientationGate);
@@ -647,38 +662,29 @@
       const debug = /[?&]debug=1/.test(location.search) || localStorage.getItem('debugCrazyBird')==='1';
       if(debug){
         console.group('%cCrazy Bird – self-tests','color:#7cc8ff');
-        // Estrutura básica
         console.assert(typeof handleOrientationGate==='function','handleOrientationGate existe');
         console.assert(document.getElementById('ui-start'), '#ui-start existe');
         console.assert(document.getElementById('ui-rotate'), '#ui-rotate existe');
         console.assert(canvas.width>0 && canvas.height>0, 'canvas inicializado');
         console.log('viewScaleX =', viewScaleX, 'VW() =', VW(), 'W() =', W());
-        // Geração de mundo considera largura visível
         const lgBefore = lastGenX; generateUntil(VW()+200); console.assert(lastGenX>=VW(), 'generateUntil cobre VW()');
-        // 🔥 Teste de chama (aparência original)
         const before = flames.length;
         const testFlame = { x0: (BIRD_X + BIRD_R + 6), y0: (H()*0.5), len: 120, ttl: 0.3 };
         flames.push(testFlame);
         draw();
         console.assert(flames.length >= before, 'flames push OK');
-        // Sem achatamento: viewScaleX deve ser 1
         console.assert(viewScaleX === 1, 'viewScaleX = 1 (sem zoom horizontal)');
         if(ctx.getTransform){ const m = ctx.getTransform(); console.assert(Math.abs(m.a-1)<1e-6, 'escala X no contexto é 1'); }
-        // Amostra de pixel: deve ter alpha > 0 e tom avermelhado (R>B)
         const sx = Math.min(canvas.width-1, Math.max(0, Math.round((testFlame.x0 + 40) * viewScaleX)));
         const sy = Math.min(canvas.height-1, Math.max(0, Math.round(testFlame.y0)));
         const px = ctx.getImageData(sx, sy, 1, 1).data; // [r,g,b,a]
         console.assert(px[3] > 0, 'pixel da chama tem alpha visível');
         console.assert(px[0] > px[2], 'pixel da chama é mais vermelho que azul');
-        // Toggle overlays
         showRotate();
         console.assert(!document.getElementById('ui-rotate').classList.contains('hide'),'showRotate exibe overlay');
         hideRotate();
         console.assert(document.getElementById('ui-rotate').classList.contains('hide'),'hideRotate oculta overlay');
-
-        // ✅ Teste novo: não há listener de 'click' duplicando ação
         console.assert(!!window.PointerEvent, 'PointerEvent disponível (senão fallback usa touchstart/mousedown)');
-        // Simula dois disparos de handleCanvasPress em sequência e garante que o estado continua válido
         const vyBefore = bird.vy; handleCanvasPress({ preventDefault:()=>{}, clientX:0, clientY:0 }); const vy1 = bird.vy; handleCanvasPress({ preventDefault:()=>{}, clientX:0, clientY:0 }); const vy2 = bird.vy; console.assert(vy1===FLAP && vy2===FLAP, 'flap consistente por pressões consecutivas (sem duplo impulso)');
         console.groupEnd();
       }
