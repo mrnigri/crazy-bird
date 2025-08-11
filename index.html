@@ -9,7 +9,6 @@
     html,body{ margin:0; height:100%; min-height:100%; overflow:hidden; background:radial-gradient(1000px 600px at 20% 20%, #0f1a3a, var(--bg)); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,'Noto Sans','Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol'; -webkit-text-size-adjust:100%; touch-action: manipulation; }
     .wrap{ display:grid; place-items:center; height:100svh; width:100vw; }
     canvas{ background:#0b1020; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); outline:none; display:block; max-width:100vw; max-height:100svh; }
-    /* ⬇️ Oculta o cursor apenas durante o jogo (classe aplicada via JS) */
     canvas.playing{ cursor:none; }
 
     .hud{ position:fixed; top:12px; left:50%; transform:translateX(-50%); font-weight:700; text-shadow:0 2px 6px rgba(0,0,0,.4); user-select:none; pointer-events:none; }
@@ -125,7 +124,7 @@
     // Power-up 🛡️ (escudo)
     const SHIELD_PICKUP_R=14;
     const SHIELD_SPAWN_MIN=8, SHIELD_SPAWN_MAX=14;
-    const SHIELD_START_SCORE=400; // mantém lógica; só mudamos textos
+    const SHIELD_START_SCORE=400; // mantém lógica
     const SHIELD_DURATION=10;
     const SHIELD_WARN=2;
     const SHIELD_BLINK_HZ=8;
@@ -201,7 +200,7 @@
       resetGame();
       Sfx.start();
       state='playing'; hideStart(); hideOver();
-      canvas.classList.add('playing'); // ⬅️ oculta cursor durante o jogo
+      canvas.classList.add('playing');
       canvas.focus();
       lastTime=performance.now();
       requestAnimationFrame(loop);
@@ -210,7 +209,7 @@
     function gameOver(){
       state='over';
       document.getElementById('final-score').textContent=score;
-      canvas.classList.remove('playing'); // ⬅️ volta o cursor
+      canvas.classList.remove('playing');
       Sfx.over();
       showOver();
     }
@@ -305,7 +304,7 @@
       uiRotate.classList.remove('hide');
       hideStart(); hideOver();
       if(state==='playing') canvas.classList.remove('playing');
-      state='menu'; // sempre volta ao menu; usuário verá a tela de início ao rotacionar para horizontal
+      state='menu';
     }
     function hideRotate(){ if(uiRotate) uiRotate.classList.add('hide'); }
 
@@ -315,7 +314,16 @@
     document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); showStart(); hideOver(); };
 
     // ======= Resize =======
-    function fitCanvas(){ const baseW=960, baseH=540; const vp=(window.visualViewport? {w:Math.floor(window.visualViewport.width), h:Math.floor(window.visualViewport.height)} : {w:window.innerWidth, h:window.innerHeight}); const scale=Math.min(vp.w/baseW, vp.h/baseH); const w=Math.max(1, Math.floor(baseW*scale)); const h=Math.max(1, Math.floor(baseH*scale)); canvas.style.width=w+'px'; canvas.style.height=h+'px'; canvas.width=w; canvas.height=h; }
+    function fitCanvas(){
+      const baseW=960, baseH=540;
+      const vp=(window.visualViewport? {w:Math.floor(window.visualViewport.width), h:Math.floor(window.visualViewport.height)} : {w:window.innerWidth, h:window.innerHeight});
+      const scale=Math.min(vp.w/baseW, vp.h/baseH);
+      const w=Math.max(1, Math.floor(baseW*scale));
+      const h=Math.max(1, Math.floor(baseH*scale));
+      canvas.style.width=w+'px';
+      canvas.style.height=h+'px';
+      canvas.width=w; canvas.height=h;
+    }
     window.addEventListener('resize',function(){ const oldH=H(); fitCanvas(); const sy=H()/oldH; segments=segments.map(function(s){ return {x:s.x, topH:s.topH*sy, botH:s.botH*sy}; }); prepareStars(); generateUntil(W()+200); buildPatterns(); handleOrientationGate(); });
     fitCanvas();
 
@@ -486,23 +494,26 @@
         setTimeout(fitCanvas, 250);
       }
     }
-      if(isPortrait()){
-        showRotate();
-      } else {
-        hideRotate();
-        // Sempre volta ao menu ao liberar paisagem
-        state='menu';
-        canvas.classList.remove('playing');
-        hideOver();
-        showStart();
-        fitCanvas();
-      }
-    }
     window.addEventListener('orientationchange', handleOrientationGate);
     window.addEventListener('resize', handleOrientationGate);
     if(window.visualViewport){ window.visualViewport.addEventListener('resize', handleOrientationGate); }
-    // Checagem inicial
     handleOrientationGate();
+
+    // ======= 🔎 Self-tests (executa com ?debug=1) =======
+    try{
+      const debug = /[?&]debug=1/.test(location.search) || localStorage.getItem('debugCrazyBird')==='1';
+      if(debug){
+        console.group('%cCrazy Bird – self-tests','color:#7cc8ff');
+        console.assert(typeof handleOrientationGate==='function','handleOrientationGate existe');
+        console.assert(document.getElementById('ui-start'), '#ui-start existe');
+        console.assert(document.getElementById('ui-rotate'), '#ui-rotate existe');
+        showRotate();
+        console.assert(!document.getElementById('ui-rotate').classList.contains('hide'),'showRotate exibe overlay');
+        hideRotate();
+        console.assert(document.getElementById('ui-rotate').classList.contains('hide'),'hideRotate oculta overlay');
+        console.groupEnd();
+      }
+    }catch(err){ console.warn('Self-tests falharam', err); }
   }
   </script>
 </body>
