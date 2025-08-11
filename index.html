@@ -97,16 +97,11 @@
     const canvas=document.getElementById('game');
     const ctx=canvas.getContext('2d');
     const W=function(){ return canvas.width; }, H=function(){ return canvas.height; };
-    // "largura de mundo" visível quando aplicamos zoom horizontal
     let viewScaleX=1; // 1 = normal; <1 = mostra mais mundo no eixo X
-    const WIDE_FACTOR=1.0; // quanto MAIS mundo mostrar no celular em horizontal (ex.: 1.35 => +35%)
-    const VW=function(){ return canvas.width / viewScaleX; }; // largura de mundo visível
+    const WIDE_FACTOR=1.0; // mantemos 1:1 para consistência
+    const VW=function(){ return canvas.width / viewScaleX; };
 
-    function updateViewScale(){
-      // Desliga o "zoom horizontal" no mobile paisagem
-      // para evitar a aparência achatada. Mantém 1:1.
-      viewScaleX = 1;
-    }
+    function updateViewScale(){ viewScaleX = 1; }
 
     // ======= Constantes =======
     const G=1800, FLAP=-480, SPEED=300, BIRD_X=200, BIRD_R=18, SEG_W=24;
@@ -123,19 +118,19 @@
     const AR_BODY_W=40, AR_BODY_H=4;
     const AR_TAIL=10;
 
-    // Chama cônica (cone pra direita)
+    // Chama cônica
     const FIRE_COOLDOWN=0.25;
     const FLAME_MAX_LEN=520, FLAME_GROW_SPEED=1200, FLAME_HALF_ANGLE=0.32, FLAME_BASE_R=10;
     const FLAME_LIFE=0.35, FLAME_STEP=14;
     // Dia→Noite
     const DAY_NIGHT_TIME=40, STAR_COUNT=90;
-    // Power-up 🔥 (munição)
+    // Pickups
     const PICKUP_R=12;
     const PICKUP_SPAWN_MIN=3.5, PICKUP_SPAWN_MAX=7.5;
-    // Power-up 🛡️ (escudo)
+    // Escudo
     const SHIELD_PICKUP_R=14;
     const SHIELD_SPAWN_MIN=8, SHIELD_SPAWN_MAX=14;
-    const SHIELD_START_SCORE=400; // mantém lógica
+    const SHIELD_START_SCORE=400;
     const SHIELD_DURATION=10;
     const SHIELD_WARN=2;
     const SHIELD_BLINK_HZ=8;
@@ -154,11 +149,12 @@
     let ammo=0;
     let shieldPickups=[], shieldTimer=0;
     let shieldTTL=0;
+    let aimPulse=0; // 0=inativo, (0,1]=animação de pulso
 
     // ======= Util =======
     const clamp=function(v,a,b){ return Math.max(a,Math.min(b,v)); };
     const randRange=function(a,b){ return a+Math.random()*(b-a); };
-    const lerp=function(a,b,t){ return a+(b-a)*t; };
+    const lerp=function(a,b,t){ return a+(b-a)*clamp(t,0,1); };
 
     function getCanvasPos(evt){
       const rect = canvas.getBoundingClientRect();
@@ -169,11 +165,11 @@
       return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
     }
 
-    // ======= ✅ Helpers de ambiente =======
+    // ======= Helpers =======
     const isMobile = function(){ return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent); };
     const isPortrait = function(){ return (window.matchMedia && window.matchMedia('(orientation: portrait)').matches) || (window.innerHeight > window.innerWidth); };
 
-    // Centro do alvo de disparo no canto inferior direito
+    // Centro do alvo
     function shootTargetCenter(){
       const r = TOUCH_SHOOT_R;
       const cx = W() - TOUCH_SHOOT_MARGIN - r;
@@ -333,19 +329,18 @@
 
     window.addEventListener('keyup',function(e){ if(e.code==='Space' || e.key===' ' || e.key==='Spacebar') pressed=false; });
 
-    // 🔁 Unifica clique/toque no canvas: no celular, tocar no alvo dispara; fora do alvo, bate asas
+    // 🔁 Unifica toque/clique no canvas: no celular, tocar no alvo dispara; fora do alvo, bate asas
     function handleCanvasPress(e){
       e.preventDefault();
       const mobile = isMobile();
       if(state==='playing' && mobile && !isPortrait()){
         const p = getCanvasPos(e);
-        if(isInsideShootTarget(p.x, p.y)) { shoot(); return; }
+        if(isInsideShootTarget(p.x, p.y)) { shoot(); aimPulse = 0.001; return; }
       }
-      // Fora do alvo (ou desktop): flap
       flap();
     }
 
-    // ✅ Corrige dupla ativação no celular: use só Pointer Events, com fallback
+    // Pointer Events com fallback
     function addInputListeners(){
       if(window.PointerEvent){
         canvas.addEventListener('pointerdown', handleCanvasPress, {passive:false});
@@ -373,7 +368,7 @@
     function hideRotate(){ if(uiRotate) uiRotate.classList.add('hide'); }
 
     document.getElementById('btn-start').onclick=function(){ startGame(); };
-    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → no teclado ou toque no alvo (canto inferior direito) para atirar. Escudo protege temporariamente.'); };
+    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e toque no alvo (canto inferior direito) para atirar.'); };
     document.getElementById('btn-restart').onclick=function(){ startGame(); };
     document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); showStart(); hideOver(); };
 
@@ -396,7 +391,7 @@
     updateAudioUi();
     document.getElementById('btn-audio').addEventListener('click',function(){ Sfx.toggle(); updateAudioUi(); });
 
-    // ======= Padrões de pedra (desempenho) =======
+    // ======= Padrões de pedra =======
     let stoneTopPattern=null, stoneBotPattern=null;
     function makeStonePattern(w,h, base1, base2, mortar){
       const off=document.createElement('canvas'); off.width=w; off.height=h; const c=off.getContext('2d');
@@ -434,6 +429,8 @@
     function update(dt){
       const dx=SPEED*dt; for(let i=0;i<segments.length;i++){ segments[i].x-=dx; } lastGenX-=dx; while(segments.length && segments[0].x+SEG_W<-50){ segments.shift(); passedIndex=Math.max(0,passedIndex-1);} generateUntil(VW()+200);
       timeElapsed+=dt; enemyTimer-=dt; pickupTimer-=dt; shieldTimer-=dt; fireCooldown=Math.max(0, fireCooldown-dt); shieldTTL=Math.max(0, shieldTTL-dt);
+
+      if(aimPulse>0){ aimPulse += dt*2.3; if(aimPulse>1) aimPulse=0; }
 
       if(timeElapsed>EASY_TIME && enemyTimer<=0){ spawnEnemy(); enemyTimer=randRange(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX); }
       for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i]; e.x-=(SPEED+ENEMY_SPEED)*dt; e.phase += dt*ENEMY_WOBBLE_HZ*2*Math.PI; if(e.x<-ENEMY_W-60) { enemies.splice(i,1); continue; } }
@@ -514,7 +511,6 @@
     function drawShieldPickups(){ ctx.save(); for(let i=0;i<shieldPickups.length;i++){ const p=shieldPickups[i]; const r=SHIELD_PICKUP_R; const glow=ctx.createRadialGradient(p.x,p.y,2,p.x,p.y,r*1.6); glow.addColorStop(0,'rgba(180,220,255,0.9)'); glow.addColorStop(0.6,'rgba(120,200,255,0.35)'); glow.addColorStop(1,'rgba(120,200,255,0)'); ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(p.x,p.y,r*1.6,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.strokeStyle='rgba(140,200,255,0.9)'; ctx.lineWidth=2; ctx.stroke(); ctx.fillStyle='rgba(200,235,255,0.9)'; ctx.beginPath(); ctx.moveTo(p.x, p.y-r*0.5); ctx.lineTo(p.x+r*0.45, p.y-r*0.15); ctx.lineTo(p.x+r*0.38, p.y+r*0.35); ctx.lineTo(p.x, p.y+r*0.55); ctx.lineTo(p.x-r*0.38, p.y+r*0.35); ctx.lineTo(p.x-r*0.45, p.y-r*0.15); ctx.closePath(); ctx.fill(); } ctx.restore(); }
 
     function drawFlames(){
-      // 🔙 Aparência original da labareda: núcleo claro e bordas laranja
       ctx.save();
       for(let i=0;i<flames.length;i++){
         const fl=flames[i];
@@ -522,10 +518,8 @@
         for(let j=1;j<=steps;j++){
           const d=j*fl.len/steps;
           const r=FLAME_BASE_R + Math.tan(FLAME_HALF_ANGLE)*d;
-          // Curva de opacidade da versão inicial
           const alpha = Math.max(0, 1 - j/steps) * Math.min(1, fl.ttl/FLAME_LIFE + 0.2);
           const x=fl.x0 + d, y=fl.y0;
-          // Highlight deslocado levemente para cima/esquerda
           const grad=ctx.createRadialGradient(x - r*0.4, y - r*0.4, r*0.2, x, y, r);
           grad.addColorStop(0,'#fff4c1');
           grad.addColorStop(0.45,'#ffb703');
@@ -541,30 +535,66 @@
       ctx.restore();
     }
 
-    // 🎯 Desenha o alvo translúcido de disparo no canto inferior direito (apenas no celular paisagem)
+    // 🎯 Alvo totalmente translúcido e divertido (apenas no celular paisagem)
     function drawTouchShootTarget(){
       if(!(isMobile() && !isPortrait())) return;
       if(state!=='playing') return;
       const {cx, cy, r} = shootTargetCenter();
+      const t = timeElapsed;
       ctx.save();
-      // Halo externo suave
-      const halo = ctx.createRadialGradient(cx, cy, r*0.5, cx, cy, r*1.4);
-      halo.addColorStop(0, 'rgba(255,255,255,0.05)');
-      halo.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = halo;
-      ctx.beginPath(); ctx.arc(cx, cy, r*1.4, 0, Math.PI*2); ctx.fill();
-      // Anéis do alvo
+      ctx.translate(cx, cy);
+      ctx.lineCap = 'round';
+
+      // 1) Pulso quando dispara (anel que expande e some)
+      if(aimPulse>0){
+        const p = clamp(aimPulse, 0, 1);
+        const pr = lerp(r*0.9, r*1.6, p);
+        ctx.globalAlpha = (1-p)*0.55;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12,18]);
+        ctx.lineDashOffset = -t*90;
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath(); ctx.arc(0,0,pr,0,Math.PI*2); ctx.stroke();
+      }
+
+      // 2) Anel externo (tracejado girando)
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([12,18]);
+      ctx.lineDashOffset = -t*60;
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+
+      // 3) Anel médio (tracejado mais curto, gira no sentido oposto)
+      ctx.globalAlpha = 0.48;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([8,12]);
+      ctx.lineDashOffset = t*45;
+      ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+      ctx.beginPath(); ctx.arc(0,0,r*0.72,0,Math.PI*2); ctx.stroke();
+
+      // 4) Anel interno pontilhado
+      ctx.globalAlpha = 0.42;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([2,10]);
+      ctx.lineDashOffset = -t*30;
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath(); ctx.arc(0,0,r*0.45,0,Math.PI*2); ctx.stroke();
+
+      // 5) "Estrelinha" divertida no centro (só traço, sem preenchimento)
+      ctx.setLineDash([]);
       ctx.globalAlpha = 0.6;
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
-      ctx.globalAlpha = 0.45;
-      ctx.beginPath(); ctx.arc(cx, cy, r*0.65, 0, Math.PI*2); ctx.stroke();
-      // Ícone de chama no centro
-      ctx.globalAlpha = 0.95;
-      const g = ctx.createRadialGradient(cx-6, cy-6, r*0.05, cx, cy, r*0.6);
-      g.addColorStop(0,'#fff4c1'); g.addColorStop(0.45,'#ffb703'); g.addColorStop(1,'#ff6b00');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(cx, cy, r*0.42, 0, Math.PI*2); ctx.fill();
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      const arms = 6; const inner = r*0.10, outer = r*0.26;
+      for(let i=0;i<arms;i++){
+        const a = t*0.9 + i*(Math.PI*2/arms);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*inner, Math.sin(a)*inner);
+        ctx.lineTo(Math.cos(a)*outer, Math.sin(a)*outer);
+        ctx.stroke();
+      }
+
       ctx.restore();
     }
 
@@ -600,76 +630,5 @@
       drawShieldPickups();
       drawFlames();
       drawBird();
-      drawTouchShootTarget(); // 🎯 alvo de disparo no celular
+      drawTouchShootTarget();
       ctx.restore();
-    }
-
-    function fit(){ fitCanvas(); }
-    fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw();
-
-    // ======= ✅ Gate de orientação no celular =======
-    function handleOrientationGate(){
-      if(!isMobile()){ hideRotate(); fitCanvas(); return; }
-      if(isPortrait()){
-        showRotate();
-      } else {
-        hideRotate();
-        state='menu';
-        canvas.classList.remove('playing');
-        hideOver();
-        showStart();
-        fitCanvas();
-        setTimeout(function(){ fitCanvas(); generateUntil(VW()+200); draw(); }, 50);
-        setTimeout(function(){ fitCanvas(); generateUntil(VW()+200); draw(); }, 250);
-      }
-    }
-    window.addEventListener('orientationchange', handleOrientationGate);
-    window.addEventListener('resize', handleOrientationGate);
-    if(window.visualViewport){ window.visualViewport.addEventListener('resize', handleOrientationGate); }
-    handleOrientationGate();
-
-    // ======= 🔎 Self-tests (executa com ?debug=1) =======
-    try{
-      const debug = /[?&]debug=1/.test(location.search) || localStorage.getItem('debugCrazyBird')==='1';
-      if(debug){
-        console.group('%cCrazy Bird – self-tests','color:#7cc8ff');
-        // Estrutura básica
-        console.assert(typeof handleOrientationGate==='function','handleOrientationGate existe');
-        console.assert(document.getElementById('ui-start'), '#ui-start existe');
-        console.assert(document.getElementById('ui-rotate'), '#ui-rotate existe');
-        console.assert(canvas.width>0 && canvas.height>0, 'canvas inicializado');
-        console.log('viewScaleX =', viewScaleX, 'VW() =', VW(), 'W() =', W());
-        // Geração de mundo considera largura visível
-        const lgBefore = lastGenX; generateUntil(VW()+200); console.assert(lastGenX>=VW(), 'generateUntil cobre VW()');
-        // 🔥 Teste de chama (aparência original)
-        const before = flames.length;
-        const testFlame = { x0: (BIRD_X + BIRD_R + 6), y0: (H()*0.5), len: 120, ttl: 0.3 };
-        flames.push(testFlame);
-        draw();
-        console.assert(flames.length >= before, 'flames push OK');
-        // Sem achatamento: viewScaleX deve ser 1
-        console.assert(viewScaleX === 1, 'viewScaleX = 1 (sem zoom horizontal)');
-        if(ctx.getTransform){ const m = ctx.getTransform(); console.assert(Math.abs(m.a-1)<1e-6, 'escala X no contexto é 1'); }
-        // Amostra de pixel: deve ter alpha > 0 e tom avermelhado (R>B)
-        const sx = Math.min(canvas.width-1, Math.max(0, Math.round((testFlame.x0 + 40) * viewScaleX)));
-        const sy = Math.min(canvas.height-1, Math.max(0, Math.round(testFlame.y0)));
-        const px = ctx.getImageData(sx, sy, 1, 1).data; // [r,g,b,a]
-        console.assert(px[3] > 0, 'pixel da chama tem alpha visível');
-        console.assert(px[0] > px[2], 'pixel da chama é mais vermelho que azul');
-        // Toggle overlays
-        showRotate();
-        console.assert(!document.getElementById('ui-rotate').classList.contains('hide'),'showRotate exibe overlay');
-        hideRotate();
-        console.assert(document.getElementById('ui-rotate').classList.contains('hide'),'hideRotate oculta overlay');
-
-        // ✅ Teste novo: não há listener de 'click' duplicando ação
-        console.assert(!!window.PointerEvent, 'PointerEvent disponível (senão fallback usa touchstart/mousedown)');
-        // Simula dois disparos de handleCanvasPress em sequência e garante que o estado continua válido
-        const vyBefore = bird.vy; handleCanvasPress({ preventDefault:()=>{}, clientX:0, clientY:0 }); const vy1 = bird.vy; handleCanvasPress({ preventDefault:()=>{}, clientX:0, clientY:0 }); const vy2 = bird.vy; console.assert(vy1===FLAP && vy2===FLAP, 'flap consistente por pressões consecutivas (sem duplo impulso)');
-        console.groupEnd();
-      }
-    }catch(err){ console.warn('Self-tests falharam', err); }
-  }
-  </script>
-</body>
-</html>
