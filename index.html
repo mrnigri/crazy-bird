@@ -55,6 +55,7 @@
         • Espaço para <strong>bater asas</strong>.<br/>
         • Clique/toque na tela também <strong>bate asas</strong>.<br/>
         • → para soltar a <strong>chama</strong> (requer 🔥).<br/>
+        • <em>No celular, toque no alvo translúcido no canto inferior direito para atirar</em>.<br/>
         • Desvie do <strong>teto</strong>, <strong>chão</strong> e <strong>flechas medievais</strong>. Escudo protege temporariamente.
       </p>
       <div class="btns">
@@ -139,6 +140,10 @@
     const SHIELD_WARN=2;
     const SHIELD_BLINK_HZ=8;
 
+    // ======= 🎯 Alvo de disparo (somente celular) =======
+    const TOUCH_SHOOT_R = 56;           // raio do alvo
+    const TOUCH_SHOOT_MARGIN = 16;      // margem às bordas do canvas
+
     // ======= Estado =======
     let state='menu';
     const bird={ x:BIRD_X, y:0, vy:0 };
@@ -154,6 +159,33 @@
     const clamp=function(v,a,b){ return Math.max(a,Math.min(b,v)); };
     const randRange=function(a,b){ return a+Math.random()*(b-a); };
     const lerp=function(a,b,t){ return a+(b-a)*t; };
+
+    function getCanvasPos(evt){
+      const rect = canvas.getBoundingClientRect();
+      const cx = (evt.touches? evt.touches[0].clientX : (typeof evt.clientX==='number'? evt.clientX : 0));
+      const cy = (evt.touches? evt.touches[0].clientY : (typeof evt.clientY==='number'? evt.clientY : 0));
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+    }
+
+    // ======= ✅ Helpers de ambiente (MOVIDOS PARA O TOPO p/ evitar TDZ) =======
+    const isMobile = function(){ return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent); };
+    const isPortrait = function(){ return (window.matchMedia && window.matchMedia('(orientation: portrait)').matches) || (window.innerHeight > window.innerWidth); };
+
+    // Centro do alvo de disparo no canto inferior direito
+    function shootTargetCenter(){
+      const r = TOUCH_SHOOT_R;
+      const cx = W() - TOUCH_SHOOT_MARGIN - r;
+      const cy = H() - TOUCH_SHOOT_MARGIN - r;
+      return {cx, cy, r};
+    }
+
+    function isInsideShootTarget(px, py){
+      const {cx, cy, r} = shootTargetCenter();
+      const dx = px - cx, dy = py - cy;
+      return (dx*dx + dy*dy) <= r*r;
+    }
 
     // ======= Dia→Noite =======
     const hexToRgb=function(hex){
@@ -300,7 +332,20 @@
     }, {passive:false});
 
     window.addEventListener('keyup',function(e){ if(e.code==='Space' || e.key===' ' || e.key==='Spacebar') pressed=false; });
-    ['click','pointerdown','touchstart'].forEach(function(evt){ canvas.addEventListener(evt,function(e){ e.preventDefault(); flap(); }); });
+
+    // 🔁 Unifica clique/toque no canvas: no celular, tocar no alvo dispara; fora do alvo, bate asas
+    function handleCanvasPress(e){
+      e.preventDefault();
+      const mobile = isMobile();
+      if(state==='playing' && mobile && !isPortrait()){
+        const p = getCanvasPos(e);
+        if(isInsideShootTarget(p.x, p.y)) { shoot(); return; }
+      }
+      // Fora do alvo (ou desktop): flap
+      flap();
+    }
+    canvas.addEventListener('pointerdown', handleCanvasPress, {passive:false});
+    canvas.addEventListener('click', handleCanvasPress, {passive:false});
 
     // ======= UI =======
     const uiStart=document.getElementById('ui-start'); const uiOver=document.getElementById('ui-over'); const uiRotate=document.getElementById('ui-rotate');
@@ -319,7 +364,7 @@
     function hideRotate(){ if(uiRotate) uiRotate.classList.add('hide'); }
 
     document.getElementById('btn-start').onclick=function(){ startGame(); };
-    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → para atirar. Escudo protege temporariamente.'); };
+    const btnHow=document.getElementById('btn-how'); if(btnHow) btnHow.onclick=function(){ alert('Bata asas com Espaço ou clique/toque. Desvie do teto/chão e flechas. Colete 🔥 para munição e use → no teclado ou toque no alvo (canto inferior direito) para atirar. Escudo protege temporariamente.'); };
     document.getElementById('btn-restart').onclick=function(){ startGame(); };
     document.getElementById('btn-menu').onclick=function(){ state='menu'; canvas.classList.remove('playing'); showStart(); hideOver(); };
 
@@ -487,6 +532,33 @@
       ctx.restore();
     }
 
+    // 🎯 Desenha o alvo translúcido de disparo no canto inferior direito (apenas no celular paisagem)
+    function drawTouchShootTarget(){
+      if(!(isMobile() && !isPortrait())) return;
+      if(state!=='playing') return;
+      const {cx, cy, r} = shootTargetCenter();
+      ctx.save();
+      // Halo externo suave
+      const halo = ctx.createRadialGradient(cx, cy, r*0.5, cx, cy, r*1.4);
+      halo.addColorStop(0, 'rgba(255,255,255,0.05)');
+      halo.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(cx, cy, r*1.4, 0, Math.PI*2); ctx.fill();
+      // Anéis do alvo
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath(); ctx.arc(cx, cy, r*0.65, 0, Math.PI*2); ctx.stroke();
+      // Ícone de chama no centro
+      ctx.globalAlpha = 0.95;
+      const g = ctx.createRadialGradient(cx-6, cy-6, r*0.05, cx, cy, r*0.6);
+      g.addColorStop(0,'#fff4c1'); g.addColorStop(0.45,'#ffb703'); g.addColorStop(1,'#ff6b00');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, r*0.42, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
     function drawBird(){
       const x=bird.x, y=bird.y; ctx.save(); ctx.translate(x,y); const angle=clamp(bird.vy/600,-0.6,0.6); ctx.rotate(angle);
       const grd=ctx.createRadialGradient(-6,-6,6,0,0,24); grd.addColorStop(0,'#ffe066'); grd.addColorStop(1,'#ffb703');
@@ -519,6 +591,7 @@
       drawShieldPickups();
       drawFlames();
       drawBird();
+      drawTouchShootTarget(); // 🎯 alvo de disparo no celular
       ctx.restore();
     }
 
@@ -526,8 +599,6 @@
     fit(); hideOver(); showStart(); updateAudioUi(); updateAmmo(); buildPatterns(); draw();
 
     // ======= ✅ Gate de orientação no celular =======
-    const isMobile = function(){ return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent); };
-    const isPortrait = function(){ return (window.matchMedia && window.matchMedia('(orientation: portrait)').matches) || (window.innerHeight > window.innerWidth); };
     function handleOrientationGate(){
       if(!isMobile()){ hideRotate(); fitCanvas(); return; }
       if(isPortrait()){
@@ -581,6 +652,24 @@
         console.assert(!document.getElementById('ui-rotate').classList.contains('hide'),'showRotate exibe overlay');
         hideRotate();
         console.assert(document.getElementById('ui-rotate').classList.contains('hide'),'hideRotate oculta overlay');
+
+        // ✅ Novos testes — garantem que helpers não quebrem TDZ e alvo funciona
+        // 1) isMobile/isPortrait disponíveis antes de draw()
+        console.assert(typeof isMobile==='function' && typeof isPortrait==='function','isMobile/isPortrait definidos');
+        // 2) drawTouchShootTarget não lança quando não for mobile
+        try { drawTouchShootTarget(); console.log('drawTouchShootTarget executou sem erro (ambiente não-mobile)'); } catch(e) { console.error('drawTouchShootTarget lançou erro', e); console.assert(false, 'drawTouchShootTarget não deve lançar'); }
+        // 3) Disparo por alvo reduz munição quando em playing
+        const {cx, cy} = shootTargetCenter();
+        state='playing'; ammo=1; fireCooldown=0; flames.length=0; updateAmmo();
+        const rect = canvas.getBoundingClientRect();
+        const evt = { preventDefault: ()=>{}, clientX: rect.left + (cx / canvas.width) * rect.width, clientY: rect.top + (cy / canvas.height) * rect.height };
+        // Força ambiente como mobile paisagem para este teste (heurística: se não for mobile, apenas não testa clique)
+        if(isMobile() && !isPortrait()){
+          handleCanvasPress(evt);
+          console.assert(ammo===0 && flames.length>0, 'Toque no alvo deve disparar e consumir 1 munição');
+        } else {
+          console.log('Ambiente não é mobile/paisagem — teste de alvo pulado.');
+        }
         console.groupEnd();
       }
     }catch(err){ console.warn('Self-tests falharam', err); }
